@@ -46,6 +46,9 @@ export interface AppSettings {
   gestureStabilityFrames: number;
   showSkeletonOverlay: boolean;
   showDebugOverlay: boolean;
+  /** Gesture Lab's face-mesh overlay (Phase 9) — a separate toggle from
+   *  the hand skeleton's since a viewer may want one without the other. */
+  showFaceMesh: boolean;
   reduceMotion: boolean;
   voiceEnabled: boolean;
 }
@@ -60,6 +63,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   gestureStabilityFrames: 3,
   showSkeletonOverlay: true,
   showDebugOverlay: false,
+  showFaceMesh: true,
   reduceMotion: false,
   voiceEnabled: false,
 };

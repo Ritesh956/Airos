@@ -36,9 +36,14 @@ const WASM_SUBPATHS = [
 
 const MODELS = [
   {
-    // Hand Landmarker — Phase 2. Face/Pose models are added in Phase 9/10.
+    // Hand Landmarker — Phase 2. Pose model is added in Phase 10.
     name: 'hand_landmarker.task',
     url: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task',
+  },
+  {
+    // Face Landmarker — Phase 9. Same bucket layout as hand_landmarker.
+    name: 'face_landmarker.task',
+    url: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task',
   },
 ];
 

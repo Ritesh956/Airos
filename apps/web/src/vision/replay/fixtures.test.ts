@@ -26,11 +26,12 @@ describe('generateGestureShowcaseFixture', () => {
     }
   });
 
-  it('marks every frame as replay-sourced with no face/pose data', () => {
+  it('marks every frame as replay-sourced, with synthetic face data and no pose data (Phase 10)', () => {
     const frames = generateGestureShowcaseFixture({ fps: 30 });
     for (const frame of frames) {
       expect(frame.source).toBe('replay');
-      expect(frame.face).toBeNull();
+      expect(frame.face).not.toBeNull();
+      expect(frame.face!.landmarks.length).toBeGreaterThan(0);
       expect(frame.pose).toBeNull();
     }
   });

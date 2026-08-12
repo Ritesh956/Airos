@@ -17,6 +17,10 @@ interface CameraStageProps {
   extraControls?: (isDemoMode: boolean) => ReactNode;
   /** Rendered between the control row and the Demo Mode toggle. */
   controlsNote?: (isDemoMode: boolean) => ReactNode;
+  /** An additional absolutely-positioned overlay layered into the preview,
+   *  alongside the always-present hand skeleton — e.g. Gesture Lab's
+   *  FaceMeshOverlay (Phase 9). Nothing by default. */
+  extraOverlay?: ReactNode;
   /** Rendered after the Demo Mode toggle and any camera error message. */
   footer?: (isDemoMode: boolean) => ReactNode;
   className?: string;
@@ -36,6 +40,7 @@ export function CameraStage({
   demoDescription = 'Use a synthetic recorded hand — no camera access needed.',
   extraControls,
   controlsNote,
+  extraOverlay,
   footer,
   className,
 }: CameraStageProps) {
@@ -69,6 +74,7 @@ export function CameraStage({
           <CameraPreview className="h-full w-full" />
         )}
         <HandSkeletonOverlay />
+        {extraOverlay}
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

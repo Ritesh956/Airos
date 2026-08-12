@@ -23,7 +23,7 @@ split, why three stores, the Interaction Engine),
 code — each documents real thresholds and real bugs found while building, not
 just design intent.
 
-## Status: Phases 1–8 complete. Resume at Phase 9 (Face tracking).
+## Status: Phases 1–9 complete. Resume at Phase 10 (Pose tracking).
 
 | # | Phase | Status |
 |---|---|---|
@@ -35,8 +35,8 @@ just design intent.
 | 6 | 3D Studio | ✅ done |
 | 7 | Air Draw | ✅ done |
 | 8 | Presentation | ✅ done |
-| **9** | **Face tracking** | **← start here** |
-| 10 | Pose tracking | pending |
+| 9 | Face tracking | ✅ done |
+| **10** | **Pose tracking** | **← start here** |
 | 11 | Voice + Command Center | pending |
 | 12 | Game Mode | pending |
 | 13 | Analytics + Perf | pending |
@@ -334,28 +334,99 @@ register" case and a "held pose doesn't refire every throttle tick"
 case — this is recorded as a known, honest gap in *live* verification
 rather than left unstated.
 
-## How to resume: Phase 9, Face tracking
+## Phase 9 shipped: Face tracking
 
-No placeholder exists yet for this phase — Face tracking adds a new
-capability (`FaceLandmarker`) rather than a new module route; check
-IMPLEMENTATION.md §11's phase table (`FaceLandmarker, mesh/eye/mouth viz`)
-and the repo layout's `vision/face/` entry (§2) for the intended shape
-before starting.
+No new module route — Face tracking is a new *capability*, wired into the
+existing `VisionEngine`/`LandmarkSource` pair exactly as
+`docs/COMPUTER_VISION.md` predicted it would be, and surfaced inside
+Gesture Lab (which already existed as "exactly what the tracking pipeline
+sees") rather than a tenth nav item. Composed from:
+- `vision/face/FaceLandmarkerService.ts` — a lazy singleton `FaceLandmarker`,
+  structurally identical to `HandLandmarkerService.ts`, with two options
+  left deliberately unset rather than defaulted-and-ignored:
+  `outputFaceBlendshapes` (MediaPipe's per-frame "smiling"/"jaw open"
+  classification scores — exactly the attribute inference the gate
+  forbids) and `outputFacialTransformationMatrixes` (nothing here renders
+  a 3D face model to apply it to). Unset, not requested-and-discarded, so
+  the capability isn't one Readout away from someone adding it later
+  without re-deriving why not to.
+- `vision/engine/CameraLandmarkSource.ts` — `detectFace` now runs
+  alongside `detectHands` in the same `tick()`, gated by `tasks.face`
+  independently of `tasks.hand`, inference time summed into the same
+  `timings.inferenceMs` the FPS readout already reads.
+- `vision/replay/faceMesh.ts` — Demo Mode's synthetic face, and the one
+  genuinely hard part this phase had that the hand fixture didn't:
+  `FaceLandmarker`'s connection constants (`FACE_LANDMARKS_FACE_OVAL`,
+  `_LEFT_EYE`, etc.) reference *specific* canonical landmark indices, so a
+  synthetic point cloud only looks face-shaped if those exact indices sit
+  in roughly the right place. Rather than hardcoding ~150 canonical index
+  positions from memory, `walkConnectionsIntoLoops` reads the *real*
+  connection constants at build time and walks each into an ordered
+  loop/chain, so placement only has to answer "where does this contour
+  sit on a face" (an ellipse, an arc), never "which index is the eye's
+  outer corner." A gentle blink/mouth-open pulse animates over time,
+  independently of whatever the synthetic hand is doing — pure landmark
+  movement, never surfaced as a "blinking" claim anywhere, same reasoning
+  as not requesting blendshapes. 7 Vitest cases cover the loop-walking
+  logic directly plus the fixture's own well-formedness (bug #6's
+  lesson — verify a demo fixture actually demos something).
+- `vision/face/FaceMeshOverlay.tsx` — structurally identical to
+  `HandSkeletonOverlay.tsx` (same hot-path subscription, same mirroring,
+  same bug-#9 tracking-loss clear), but deliberately narrower in *what* it
+  draws: only face oval, eyes, eyebrows, and lips — never the full
+  ~7000-edge tesselation (too visually dense to read as anything but
+  noise), and never a derived "openness" or expression readout. Every
+  pixel on screen is a MODEL landmark position, geometrically connected;
+  nothing is classified.
+- `modules/lab/LabModule.tsx` — a "Track face" toggle drives
+  `useVisionTask`'s `face` field directly (the hook already reacts to it
+  changing — no new plumbing needed), opt-in rather than always-on
+  alongside hands, per IMPLEMENTATION.md §1.2's whole reasoning for
+  task-subscription existing at all. A separate "Face mesh overlay"
+  toggle (backed by the new `AppSettings.showFaceMesh`) controls only the
+  *visualization*, independent of whether detection itself is running —
+  manually verified live: turning detection off clears the mesh
+  completely (no bug-#9-style ghost), and turning only the overlay off
+  while detection stays on leaves "Face detected: Yes" correctly
+  reporting while the drawing itself disappears.
+- `apps/web/scripts/fetch-models.mjs` — `face_landmarker.task` added
+  alongside `hand_landmarker.task`, same Google model-hosting bucket
+  layout; fetched and verified (~3.6MB) during this phase.
 
-**Gate for this phase**: *"Tracking only — no attribute claims."* Worth
-reading literally: this phase must not infer or display anything about
-who a face belongs to, their emotional state, age, or identity — mesh/eye/
-mouth tracking only, MODEL-tagged like hand landmarks are.
+`docs/COMPUTER_VISION.md`, which had been left at its Phase 2 snapshot the
+entire time (still describing gesture classification as "Phase 3 — not
+yet built"), got a real refresh this phase, not just a Phase 9 addendum.
 
-Reuse checklist: `VisionEngine`/`LandmarkSource`/`VisionTaskRequest`
-already support `face: boolean` in their task-subscription shape
-(IMPLEMENTATION.md §1.2) — this phase is about implementing the
-`FaceLandmarker` wrapper and wiring it through machinery that already
-expects it, not inventing new plumbing. `docs/COMPUTER_VISION.md` says
-this outright: "Phase 9/10 add `FaceLandmarker` and `PoseLandmarker`
-behind this same `LandmarkSource`/`VisionEngine` pair, no architectural
-changes required." No open questions parked for this phase in
-IMPLEMENTATION.md §13.
+## How to resume: Phase 10, Pose tracking
+
+No placeholder exists yet for this phase either — same shape as Phase 9,
+a new capability (`PoseLandmarker`) behind the existing `VisionEngine`/
+`LandmarkSource` pair rather than a new module route. Check
+IMPLEMENTATION.md §11's phase table (`PoseLandmarker, skeleton, joint
+angles`) and the repo layout's `vision/pose/` entry (§2).
+
+**Gate for this phase**: *"Angles correct vs. manual check."* Unlike
+Phase 9's "don't compute anything," this phase's whole deliverable *is* a
+derived computation (joint angles) — so the manual verification step
+means literally measuring a real joint angle by eye/protractor against
+what the app reports, not just confirming the skeleton renders.
+
+Reuse checklist: `VisionTaskRequest.pose` already exists and is already
+plumbed through `VisionEngine`'s union-of-tasks logic and
+`ReplaySource`'s per-task gating — see how Phase 9 turned on `face`
+without touching either of those files, `pose` is the same shape. Follow
+`FaceLandmarkerService.ts`/`FaceMeshOverlay.tsx` as the template
+(`PoseLandmarkerService.ts` + a `PoseSkeletonOverlay.tsx`), and reuse
+`vision/replay/faceMesh.ts`'s `walkConnectionsIntoLoops` approach if
+`PoseLandmarker.POSE_CONNECTIONS` needs the same synthetic-fixture
+treatment — pose has far fewer landmarks (33) than a face (478), so
+hand-placing them without the topology-walk trick may honestly be simpler
+this time; judge it fresh rather than reusing the machinery on reflex.
+Joint-angle computation itself is DERIVED arithmetic on MODEL landmark
+positions (`jointAngle()` in `gestures/geometry.ts` is the exact same math
+already used for finger-curl detection) — reuse it rather than
+reimplementing angle-between-three-points. No open questions parked for
+this phase in IMPLEMENTATION.md §13.
 
 ## Architecture quick-reference (see docs/ARCHITECTURE.md for full detail)
 
@@ -398,7 +469,7 @@ IMPLEMENTATION.md §13.
 ```bash
 npm run typecheck   # tsc -b across all 3 workspaces
 npm run lint        # eslint, includes the boundaries rule
-npm run test:run    # vitest run — 145 tests as of end of Phase 8
+npm run test:run    # vitest run — 152 tests as of end of Phase 9
 npm run build       # tsc + vite build, all 3 workspaces
 ```
 Run all four before considering any phase done. `npm run dev` (or the

@@ -1,4 +1,5 @@
 import type { HandObservation, Landmark, VisionFrame } from '@/vision/types';
+import { generateSyntheticFace } from './faceMesh';
 
 /**
  * Synthetic landmark fixtures for Demo Mode and testing.
@@ -266,7 +267,10 @@ function buildFrame(
   return {
     timestamp,
     hands: [hand],
-    face: null,
+    // Always populated here; ReplaySource.tick() strips it back to null
+    // unless a consumer actually requested the face task — same gating
+    // hands go through, see ReplaySource.ts.
+    face: generateSyntheticFace(timestamp),
     pose: null,
     timings: { inferenceMs: 0, totalMs: 0 },
     source: 'replay',

@@ -1,8 +1,8 @@
 # Computer Vision
 
-> **Status: hand tracking implemented (Phase 2).** Face and pose tracking
-> are still Phase 9/10 — see IMPLEMENTATION.md §11. This document describes
-> what's actually in the codebase today.
+> **Status: hand tracking (Phase 2) and face tracking (Phase 9)
+> implemented.** Pose tracking is still Phase 10 — see IMPLEMENTATION.md
+> §11. This document describes what's actually in the codebase today.
 
 ## What AIR OS uses, and why
 
@@ -17,21 +17,24 @@ Principle".
 
 Currently wired up: the **Hand Landmarker** — 21 3D landmarks per hand, up
 to 2 hands, plus a handedness (left/right) classification and a
-per-detection confidence score. Face Landmarker and Pose Landmarker follow
-in Phase 9/10, reusing the same `VisionEngine`/`LandmarkSource` machinery.
+per-detection confidence score — and the **Face Landmarker** — up to 478
+3D landmarks for a single face (`numFaces: 1`; this is a single-user tool,
+not a room-scanning one). Pose Landmarker follows in Phase 10, reusing the
+same `VisionEngine`/`LandmarkSource` machinery both of these already do.
 
 ## Where the model files live
 
 `@mediapipe/tasks-vision`'s WASM runtime (~30MB across its SIMD/non-SIMD/
-module variants) and the Hand Landmarker model (~8MB) are vendored into
-`apps/web/public/models/` rather than loaded from a third-party CDN at
-runtime — self-hosted, so the app doesn't depend on Google's CDN being
-reachable in production. These are large, slow-changing binaries, so
-they're **not committed to git**: `apps/web/scripts/fetch-models.mjs` fetches
-them (copies the WASM files from the installed npm package, downloads the
-`.task` model from Google's model-hosting bucket) and runs automatically on
-`npm install` via a `postinstall` hook. Run `npm run models:fetch` manually
-if `public/models/` ever needs regenerating.
+module variants), the Hand Landmarker model (~8MB), and the Face Landmarker
+model (~4MB) are vendored into `apps/web/public/models/` rather than loaded
+from a third-party CDN at runtime — self-hosted, so the app doesn't depend
+on Google's CDN being reachable in production. These are large, slow-
+changing binaries, so they're **not committed to git**:
+`apps/web/scripts/fetch-models.mjs` fetches them (copies the WASM files
+from the installed npm package, downloads each `.task` model from Google's
+model-hosting bucket) and runs automatically on `npm install` via a
+`postinstall` hook. Run `npm run models:fetch` manually if
+`public/models/` ever needs regenerating.
 
 ## The pipeline, as built
 
@@ -39,16 +42,60 @@ if `public/models/` ever needs regenerating.
 Video frame (from CameraLandmarkSource, or a fixture from ReplaySource)
   -> HandLandmarker.detectForVideo()          [vision/hand/HandLandmarkerService.ts]
   -> HandObservation[]                         MODEL — landmarks + handedness
+  -> FaceLandmarker.detectForVideo()          [vision/face/FaceLandmarkerService.ts]
+  -> FaceObservation | null                    MODEL — landmarks only, see below
   -> VisionFrame                               [vision/types.ts]
   -> VisionEngine.handleFrame()                [vision/engine/VisionEngine.ts]
-       -> visionStore (throttled ~10Hz)         cold path — FPS, hand count, text UI
-       -> direct subscribers                    hot path — HandSkeletonOverlay, per frame
+       -> visionStore (throttled ~10Hz)         cold path — FPS, hand/face presence, text UI
+       -> direct subscribers                    hot path — HandSkeletonOverlay/FaceMeshOverlay, per frame
 ```
 
-Gesture classification (turning landmarks into PINCH/FIST/etc.) is Phase 3
-— not yet built. Today, a `VisionFrame`'s hand data goes straight to the
-skeleton overlay and the vision store; nothing interprets it as a gesture
-yet.
+Both landmarkers run against the same video frame and timestamp, gated
+independently by `VisionTaskRequest.hand`/`.face` — a module that only
+acquires `{ hand: true }` never pays for face inference at all (see "Task
+subscription" below). Gesture classification (turning hand landmarks into
+PINCH/FIST/etc.) is `gestures/` — see `docs/GESTURES.md`.
+
+## Face Landmarker: tracking only, by design
+
+Phase 9's gate is literal: *"Tracking only — no attribute claims."* This
+shapes `FaceLandmarkerService.ts` in a way worth calling out explicitly,
+since the MediaPipe API makes the opposite choice easy to reach for:
+
+- `outputFaceBlendshapes` stays unset. MediaPipe's blendshapes are a
+  per-frame classification score for things like "smiling," "eyebrow
+  raised," or "jaw open" — exactly the kind of expression/attribute
+  inference the gate forbids. It isn't requested, not just unused, so the
+  capability isn't one Readout away from someone adding it later without
+  re-deriving why not to.
+- `outputFacialTransformationMatrixes` also stays unset — nothing in this
+  phase renders a 3D face model or AR effect, so there's no consumer for
+  a pose/orientation matrix.
+- The overlay (`vision/face/FaceMeshOverlay.tsx`) draws raw landmark
+  connections — face oval, eyes, eyebrows, lips — and nothing else. No
+  "openness" ratio, no derived expression state, no identity or age
+  guess. Every point on screen is a MODEL landmark position, geometrically
+  connected; nothing is classified.
+- `numFaces: 1` — this is a single-user tool throughout, not a
+  room-scanning one, matching the framing everywhere else in the app.
+
+## Demo Mode's face fixture: real topology, synthetic positions
+
+`vision/replay/faceMesh.ts` generates a synthetic face for Demo Mode, and
+it solves a problem the hand fixture doesn't have. `FaceLandmarker`'s
+connection constants (`FACE_LANDMARKS_FACE_OVAL`, `_LEFT_EYE`, etc.)
+reference *specific* canonical landmark indices — drawing them against
+synthetic points only looks face-shaped if those specific indices sit in
+roughly the right place. Rather than hardcoding ~150 canonical index
+positions from memory (error-prone, and silently wrong is worse than
+loudly wrong), `walkConnectionsIntoLoops` reads the *real* connection
+constants at build time and walks each into an ordered loop or chain, so
+placement only has to answer "where does this contour sit on a face"
+(an ellipse, an arc), never "which index is the eye's outer corner."
+A gentle blink and mouth-open pulse animate over time, independent of
+whatever the synthetic hand is doing — purely synthetic landmark movement,
+never displayed as a "blinking" or "talking" claim anywhere, for the same
+reason the real service never requests blendshapes.
 
 ## Task subscription — the actual API
 
@@ -105,8 +152,8 @@ state "Demo · Recorded" rather than implying live tracking.
 MediaPipe emits **unmirrored** normalized coordinates in `[0, 1]`. Neither
 `vision/` nor `gestures/` may mirror them — mirroring is a *presentation*
 concern, applied exactly once, in `utils/coords.ts`, when mapping to
-screen/canvas space (see `HandSkeletonOverlay.tsx` for the one place that
-currently does this).
+screen/canvas space (`HandSkeletonOverlay.tsx` and `FaceMeshOverlay.tsx`
+both go through it, never mirroring inline themselves).
 
 This applies to **handedness** too, and it's the single most common gotcha
 in projects like this: MediaPipe's `Left`/`Right` label is computed on the
@@ -141,8 +188,7 @@ project's phase gate, not an optional step.
 
 ## What's next
 
-Phase 3 (Gesture engine) turns `HandObservation.landmarks` into named
-gestures — see `docs/GESTURES.md`, which documents the classification
-approach that isn't built yet. Phase 9/10 add `FaceLandmarker` and
-`PoseLandmarker` behind this same `LandmarkSource`/`VisionEngine` pair, no
-architectural changes required.
+Phase 10 (Pose tracking) adds `PoseLandmarker` behind this same
+`LandmarkSource`/`VisionEngine` pair — no architectural changes expected,
+same as Face Landmarker needed none in Phase 9. `docs/GESTURES.md`
+documents how hand landmarks become named gestures.

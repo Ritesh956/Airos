@@ -1,7 +1,8 @@
 import { cameraManager } from '@/vision/camera/CameraManager';
 import { appStore } from '@/state/appStore';
 import { detectHands, preloadHandLandmarker } from '@/vision/hand/HandLandmarkerService';
-import { NO_TASKS, type HandObservation, type VisionFrame, type VisionTaskRequest } from '@/vision/types';
+import { detectFace, preloadFaceLandmarker } from '@/vision/face/FaceLandmarkerService';
+import { NO_TASKS, type FaceObservation, type HandObservation, type VisionFrame, type VisionTaskRequest } from '@/vision/types';
 import type { LandmarkSource } from './LandmarkSource';
 
 type LoopHandle = { kind: 'vfc'; id: number; video: HTMLVideoElement } | { kind: 'raf'; id: number } | null;
@@ -37,6 +38,7 @@ export class CameraLandmarkSource implements LandmarkSource {
       // for the WASM/model download.
       void preloadHandLandmarker();
     }
+    if (tasks.face) void preloadFaceLandmarker();
 
     this.unsubscribeAppStore = appStore.subscribe(() => this.syncWithCameraState());
     this.syncWithCameraState();
@@ -45,6 +47,7 @@ export class CameraLandmarkSource implements LandmarkSource {
   updateTasks(tasks: VisionTaskRequest): void {
     this.tasks = tasks;
     if (tasks.hand) void preloadHandLandmarker();
+    if (tasks.face) void preloadFaceLandmarker();
   }
 
   stop(): void {
@@ -93,18 +96,24 @@ export class CameraLandmarkSource implements LandmarkSource {
   private async tick(video: HTMLVideoElement): Promise<void> {
     const frameStart = performance.now();
     let hands: HandObservation[] = [];
+    let face: FaceObservation | null = null;
     let inferenceMs = 0;
 
     if (this.tasks.hand) {
       const result = await detectHands(video, Math.round(frameStart));
       hands = result.hands;
-      inferenceMs = result.inferenceMs;
+      inferenceMs += result.inferenceMs;
+    }
+    if (this.tasks.face) {
+      const result = await detectFace(video, Math.round(frameStart));
+      face = result.face;
+      inferenceMs += result.inferenceMs;
     }
 
     const frame: VisionFrame = {
       timestamp: frameStart,
       hands,
-      face: null,
+      face,
       pose: null,
       timings: { inferenceMs, totalMs: performance.now() - frameStart },
       source: 'camera',

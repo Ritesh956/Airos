@@ -235,7 +235,10 @@ settings, working keyboard shortcuts and command palette, real-time hand
 tracking with a live skeleton overlay, an 11-gesture recognition engine, a
 cursor that actually clicks and drags real elements via genuine dispatched
 DOM events, a live landmark table + gesture timeline + FPS readouts in
-Gesture Lab, a Three.js scene in 3D Studio whose objects you select/drag/
+Gesture Lab (plus an opt-in Face Landmarker toggle drawing a face oval/
+eyes/eyebrows/lips overlay — tracking only, no expression or identity
+inference, and the model is never even asked for the blendshape scores
+that would make that possible), a Three.js scene in 3D Studio whose objects you select/drag/
 scale/rotate with real gestures (with full mouse and keyboard parity, per
 §1.6), a drawing canvas in Air Draw where pinch paints smoothed strokes, a
 fist erases, undo/redo/clear/color/brush-size all work, and drawings

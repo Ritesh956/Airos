@@ -15,9 +15,9 @@ decision — start there.
 
 ## Current status
 
-**Phases 1–8 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
-Air Cursor, Gesture Lab, 3D Studio, Air Draw, Presentation** — complete.
-See IMPLEMENTATION.md §11 for the full phase plan.
+**Phases 1–9 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
+Air Cursor, Gesture Lab, 3D Studio, Air Draw, Presentation, Face
+Tracking** — complete. See IMPLEMENTATION.md §11 for the full phase plan.
 
 Working today: the app shell, routing, the design system, the camera
 lifecycle (start/stop/error handling, verified against the OS camera
@@ -43,7 +43,11 @@ landmark table (raw MediaPipe output plus the one place mirroring happens),
 a gesture timeline logging every stable-gesture transition with a
 wall-clock timestamp, real FPS/inference readouts, and toggleable skeleton
 and landmark-index overlays — every number labelled Model, Heuristic, or
-Derived, per the project's provenance rule.
+Derived, per the project's provenance rule. An opt-in "Track Face" toggle
+adds a second MediaPipe model — Face Landmarker — drawing a face
+oval/eyes/eyebrows/lips overlay. Deliberately tracking-only: no expression,
+emotion, age, or identity inference anywhere, and the underlying model is
+never even asked for the blendshape scores that would make that possible.
 
 3D Studio puts real objects in your hands: pinch to select and drag a cube,
 sphere, torus, or the glowing wireframe centerpiece across a camera-facing
