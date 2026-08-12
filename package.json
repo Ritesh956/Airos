@@ -1,0 +1,26 @@
+{
+  "name": "air-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AIR OS — a touchless, gesture-driven interface running entirely in the browser.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @airos/web",
+    "dev:server": "npm run dev -w @airos/server",
+    "build": "npm run build -w @airos/shared && npm run build -w @airos/web && npm run build -w @airos/server",
+    "typecheck": "npm run typecheck -w @airos/shared && npm run typecheck -w @airos/web && npm run typecheck -w @airos/server",
+    "lint": "npm run lint -w @airos/web && npm run lint -w @airos/server",
+    "test": "npm run test -w @airos/web",
+    "test:run": "npm run test:run -w @airos/web"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2"
+  }
+}

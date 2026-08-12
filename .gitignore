@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+*.log
+
+# Vite
+.vite/
+
+# Vendored MediaPipe WASM runtime + model files — fetched by
+# apps/web/scripts/fetch-models.mjs (runs on postinstall). Large binaries,
+# deliberately not committed. See docs/COMPUTER_VISION.md.
+apps/web/public/models/wasm/
+apps/web/public/models/*.task
+!apps/web/public/models/.gitkeep

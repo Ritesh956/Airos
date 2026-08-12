@@ -1,0 +1,29 @@
+{
+  "name": "@airos/server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Minimal backend for AIR OS: a health endpoint and a WebSocket relay for future multiplayer gesture state. Never touches camera frames.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@airos/shared": "*",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/express": "^4.17.21",
+    "@types/ws": "^8.5.13",
+    "eslint": "^10.8.1",
+    "globals": "^15.14.0",
+    "tsx": "^4.19.2",
+    "typescript-eslint": "^8.67.0"
+  }
+}

@@ -1,0 +1,96 @@
+@import 'tailwindcss';
+
+/*
+ * AIR OS design tokens.
+ *
+ * The brief for this UI: futuristic, premium, technical, minimal, cinematic.
+ * Dark surface, glass panels, thin borders, restrained glow on things that
+ * are actually tracking something live — not on everything. See
+ * docs/ARCHITECTURE.md for the full rationale.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* Surface scale — near-black, blued rather than warm, to read as "screen"
+     rather than "paper". */
+  --color-surface-0: #06070a;
+  --color-surface-1: #0b0d12;
+  --color-surface-2: #12151c;
+  --color-surface-3: #1a1e28;
+  --color-border: #232837;
+  --color-border-strong: #323952;
+
+  --color-ink-0: #f4f6fb;
+  --color-ink-1: #c7ccdb;
+  --color-ink-2: #8b93ab;
+  --color-ink-3: #5b6178;
+
+  /* Signal cyan — the one accent used for "the system is tracking you right
+     now". Kept to a single hue on purpose so glow reads as meaningful. */
+  --color-signal-400: #5eead4;
+  --color-signal-500: #2dd4bf;
+  --color-signal-600: #14b8a6;
+
+  /* Secondary accent — used sparingly for selection/active states, distinct
+     enough from signal-cyan not to be confused with "live tracking". */
+  --color-accent-400: #a78bfa;
+  --color-accent-500: #8b5cf6;
+
+  --color-danger-500: #f87171;
+  --color-warning-500: #fbbf24;
+  --color-success-500: #4ade80;
+
+  --animate-pulse-slow: pulse-slow 2.4s ease-in-out infinite;
+  --animate-scan: scan 3s linear infinite;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-surface-0 text-ink-0 antialiased;
+    font-feature-settings: 'ss01' 1, 'cv01' 1;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-signal-500) 35%, transparent);
+  }
+
+  * {
+    scrollbar-color: var(--color-border-strong) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@layer components {
+  /* Glass panel — the base surface for every floating UI element. */
+  .glass-panel {
+    @apply bg-surface-2/70 border border-border backdrop-blur-xl;
+    box-shadow:
+      0 1px 0 0 color-mix(in oklab, white 4%, transparent) inset,
+      0 20px 40px -20px rgba(0, 0, 0, 0.6);
+  }
+
+  .glow-signal {
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-signal-500) 40%, transparent),
+      0 0 24px -4px color-mix(in oklab, var(--color-signal-500) 70%, transparent);
+  }
+
+  .text-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
