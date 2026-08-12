@@ -15,9 +15,9 @@ decision — start there.
 
 ## Current status
 
-**Phases 1–7 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
-Air Cursor, Gesture Lab, 3D Studio, Air Draw** — complete. See
-IMPLEMENTATION.md §11 for the full phase plan.
+**Phases 1–8 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
+Air Cursor, Gesture Lab, 3D Studio, Air Draw, Presentation** — complete.
+See IMPLEMENTATION.md §11 for the full phase plan.
 
 Working today: the app shell, routing, the design system, the camera
 lifecycle (start/stop/error handling, verified against the OS camera
@@ -65,9 +65,18 @@ alongside a one-click PNG export and a local IndexedDB gallery of saved
 drawings. Full mouse parity (click-drag to draw) means it's just as usable
 without a camera.
 
-The other two modules are real, navigable routes that honestly state what's
-planned and which phase builds them — not placeholder buttons that pretend
-to work.
+Presentation drives a slide deck hands-free: swipe left or right to move
+through the deck, thumbs up starts a presenter timer, a fist pauses it,
+and an open palm toggles a gesture-legend overlay — all edge-triggered off
+the same gesture classifications every other module publishes, with no
+per-frame tracking of its own. Demo Mode can fully exercise the core
+interaction here (unlike 3D Studio's two-hand gesture): the synthetic
+fixture's swipe keyframe advances slides through the real code path. Full
+mouse and keyboard parity throughout.
+
+The remaining module (`Game Mode`) and `Analytics` are real, navigable
+routes that honestly state what's planned and which phase builds them —
+not placeholder buttons that pretend to work.
 
 ## Getting started
 

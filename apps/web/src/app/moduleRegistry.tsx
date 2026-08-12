@@ -98,7 +98,7 @@ export const MODULE_REGISTRY: ModuleDescriptor[] = [
     icon: PresentIcon,
     shortcut: '6',
     phase: 8,
-    status: 'planned',
+    status: 'ready',
     component: lazy(() => import('@/modules/present/PresentModule')),
   },
   {

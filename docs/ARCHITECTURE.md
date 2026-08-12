@@ -228,21 +228,24 @@ Adding a tenth module means adding one entry here — no other file changes.
 
 ## What's actually built vs. what's still a placeholder
 
-Home, Settings, Air Cursor, Gesture Lab, 3D Studio, and Air Draw are fully
-functional: camera start/stop with real error handling, live browser
-capability detection, localStorage-persisted settings, working keyboard
-shortcuts and command palette, real-time hand tracking with a live
-skeleton overlay, an 11-gesture recognition engine, a cursor that actually
-clicks and drags real elements via genuine dispatched DOM events, a live
-landmark table + gesture timeline + FPS readouts in Gesture Lab, a
-Three.js scene in 3D Studio whose objects you select/drag/scale/rotate
-with real gestures (with full mouse and keyboard parity, per §1.6), and a
-drawing canvas in Air Draw where pinch paints smoothed strokes, a fist
-erases, undo/redo/clear/color/brush-size all work, and drawings export as
-real PNGs or save to a local IndexedDB gallery — with full mouse parity
-for drawing too. The remaining two modules (`Presentation`, `Game Mode`)
-and `Analytics` are real, navigable routes that render
-`ui/ModulePlaceholder.tsx` — an honest "not built yet, here's what's
-planned and in which phase" screen, not a fake button that pretends to do
-something. See IMPLEMENTATION.md §11 for the full phase plan, or
-CLAUDE.md for exactly where things stand right now.
+Home, Settings, Air Cursor, Gesture Lab, 3D Studio, Air Draw, and
+Presentation are fully functional: camera start/stop with real error
+handling, live browser capability detection, localStorage-persisted
+settings, working keyboard shortcuts and command palette, real-time hand
+tracking with a live skeleton overlay, an 11-gesture recognition engine, a
+cursor that actually clicks and drags real elements via genuine dispatched
+DOM events, a live landmark table + gesture timeline + FPS readouts in
+Gesture Lab, a Three.js scene in 3D Studio whose objects you select/drag/
+scale/rotate with real gestures (with full mouse and keyboard parity, per
+§1.6), a drawing canvas in Air Draw where pinch paints smoothed strokes, a
+fist erases, undo/redo/clear/color/brush-size all work, and drawings
+export as real PNGs or save to a local IndexedDB gallery, and a
+Presentation module that drives a slide deck off swipes (next/previous),
+THUMBS_UP/FIST (timer start/pause), and OPEN_PALM (a gesture-legend
+toggle) — the first module needing no per-frame hand-position tracking at
+all, just the gesture classifications every other module already
+publishes. The remaining module (`Game Mode`) and `Analytics` are real,
+navigable routes that render `ui/ModulePlaceholder.tsx` — an honest "not
+built yet, here's what's planned and in which phase" screen, not a fake
+button that pretends to do something. See IMPLEMENTATION.md §11 for the
+full phase plan, or CLAUDE.md for exactly where things stand right now.

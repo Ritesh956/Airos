@@ -23,7 +23,7 @@ split, why three stores, the Interaction Engine),
 code — each documents real thresholds and real bugs found while building, not
 just design intent.
 
-## Status: Phases 1–7 complete. Resume at Phase 8 (Presentation).
+## Status: Phases 1–8 complete. Resume at Phase 9 (Face tracking).
 
 | # | Phase | Status |
 |---|---|---|
@@ -34,8 +34,8 @@ just design intent.
 | 5 | Gesture Lab | ✅ done |
 | 6 | 3D Studio | ✅ done |
 | 7 | Air Draw | ✅ done |
-| **8** | **Presentation** | **← start here** |
-| 9 | Face tracking | pending |
+| 8 | Presentation | ✅ done |
+| **9** | **Face tracking** | **← start here** |
 | 10 | Pose tracking | pending |
 | 11 | Voice + Command Center | pending |
 | 12 | Game Mode | pending |
@@ -242,27 +242,120 @@ live in this session. Flagging this plainly rather than claiming a
 verification that didn't happen — see this file's own quality bar on
 fabricated confidence.
 
-## How to resume: Phase 8, Presentation
+## Phase 8 shipped: Presentation
 
-Current placeholder: `apps/web/src/modules/present/PresentModule.tsx`
-(`ModulePlaceholder`, `phase={8}`). Its `willInclude` promises (check the
-placeholder itself for the current wording before starting — this handoff
-doesn't duplicate it) center on slide navigation via swipe, a presenter
-HUD, and a timer.
+`apps/web/src/modules/present/PresentModule.tsx` is the real module now.
+The first phase with **no `interaction/present/` Interaction Engine at
+all** — a deliberate absence, not an oversight: every gesture this module
+needs (SWIPE_LEFT/RIGHT, THUMBS_UP, FIST, OPEN_PALM) is already a fully
+classified, published value in `interactionStore.activeGesture`, and
+Presentation needs no per-frame hand *position* the way Cursor/Studio/Draw
+do. Adding an engine class here would be a hot-path abstraction with
+nothing hot to do. Composed from:
+- `modules/present/presentStore.ts` — slide index (clamped, never
+  wrapping) and a stopwatch-style timer (`accumulatedMs` banked from past
+  run segments + `runStartedAt` for the live segment, so pausing/resuming
+  never drifts). Every bit of timing/bounds math is a pure, exported
+  function (`applyStartTimer`/`applyPauseTimer`/`computeElapsedMs`/
+  `clampSlideIndex`) the store's public actions just call — 11 Vitest
+  cases cover the math directly, no store or real clock involved, same
+  "pure core, thin store wrapper" split `drawStrokes.ts` uses.
+- `modules/present/usePresentGestureCommands.ts` — the one hook that
+  *does* all the gesture-to-action work an engine would otherwise own. Its
+  entire job is correctly separating two edge-detection semantics that
+  look similar but aren't: swipes are one-shot events (react to *every*
+  new `activeGesture` publish, since `gestureBridge` never republishes the
+  same swipe — this is what makes two consecutive same-direction swipes
+  both register, not just the first), while THUMBS_UP/FIST/OPEN_PALM are
+  *held* poses republished every ~100ms by the throttle for as long as
+  they're held (react only on the *value* transition into that pose, or a
+  held OPEN_PALM would toggle the legend on and off ~10 times a second).
+  Both trackers seed their baseline from whatever's already live in the
+  global `interactionStore` at mount, not `null` — arriving here from
+  Cursor or Studio with a stale gesture already sitting in the store must
+  not fire an action the instant this module mounts.
+- `modules/present/usePresentKeyboardCommands.ts` — arrows for slide nav,
+  `s`/`p`/`r` for start/pause/reset, `h`/`n` for legend/notes, registered
+  through `CommandRouter` like every other module's keyboard parity.
+- `modules/present/SlideStage.tsx` — the slide view plus every control
+  (prev/next, dot pagination, timer, notes, legend), all in the normal
+  panel layout rather than hover-revealed — deliberately, to avoid a
+  keyboard-accessibility trap where a control only becomes visible on
+  mouse hover or a held gesture. OPEN_PALM's "reveal controls" (from the
+  original placeholder's brief) became a toggleable gesture-legend
+  overlay instead of a hidden-then-shown toolbar, for exactly that reason.
+- `modules/present/slides.ts` — a fixed demo deck pitching AIR OS itself,
+  presented with AIR OS's own gesture engine. No slide editor is in scope
+  (the placeholder's brief was "drive a deck with swipes," not "author
+  one"), matching Studio's fixed-object-set precedent.
 
-**Gate for this phase**: *"Slides, swipe nav, presenter HUD, timer → Swipes
-reliable, no double-fires."*
+**Unlike 3D Studio, Demo Mode here fully demonstrates the core
+interaction**: the synthetic fixture's one baked-in swipe (`SWIPE_LEFT`,
+per `fixtures.ts`) drives `nextSlide()` through the exact same code path a
+live swipe would. No two-hand-gesture-style permanent gap exists for this
+module.
 
-Reuse checklist: `SWIPE_LEFT`/`SWIPE_RIGHT` are already fully implemented
-in the gesture engine (docs/GESTURES.md) and are discrete, one-frame events
-published *unthrottled* by `gestureBridge.ts` (bug #4) — subscribe to
-`interactionStore.activeGesture` or hook into `gestureBridge`'s swipe path
-directly rather than polling for it, and remember a swipe doesn't go
-through the pose-stability debounce the way held poses do. "No double-fires"
-in the gate is exactly the 600ms cooldown `SwipeDetector` already enforces
-(docs/GESTURES.md) — verify it's sufficient for a presentation's normal
-pace rather than re-implementing a second cooldown at this layer. No open
-questions parked for this phase in IMPLEMENTATION.md §13.
+`moduleRegistry.tsx`'s `present` entry is now `status: 'ready'`.
+
+### A real testing-infrastructure gap this phase found
+
+`usePresentGestureCommands.test.tsx` was the first test in the project to
+use `@testing-library/react`'s `render`/`renderHook` across multiple
+`it()` blocks in one file. `apps/web/src/test/setup.ts` had never called
+Testing Library's `cleanup()` between tests — nothing before this phase
+needed it, since every earlier test exercised pure logic or a class
+singleton, never a mounted component. Without it, every `renderHook()`
+call stayed mounted for the rest of the run: a later test's store update
+was picked up by *every* previously-mounted hook instance, each firing its
+own `nextSlide()`/`startTimer()`, turning one intended event into several.
+Caught immediately by the swipe test's assertion (`slideIndex` landed on 2
+instead of 1). Fixed by adding `afterEach(cleanup)` to the shared setup
+file — see its comment for the failure mode in more detail. **This wasn't
+specific to Presentation's tests; any future test using `render`/
+`renderHook` would have hit the same silent multiplication bug.** Worth
+knowing before writing the next component/hook test in this project.
+
+### A verification lesson, continued (see Phase 7's for the first half)
+
+Manually confirmed live and correct in the browser: THUMBS_UP starting the
+timer, FIST pausing it (including the timer correctly *not* resetting,
+just freezing), OPEN_PALM toggling the gesture-legend overlay with no
+flicker across repeated throttled republishes of the same held pose, and
+full mouse/keyboard parity for every control including bounds-clamping at
+both ends of the deck. The one gesture path *not* caught live was
+SWIPE_LEFT itself — the same narrow-window-vs-sparse-polling timing race
+documented in Phase 7's PINCH note (the fixture's swipe segment is a
+similarly short slice of its ~7.6s loop). Given that the identical
+`nextSlide()`/`prevSlide()` functions were separately proven live via
+mouse clicks and keyboard arrows, and the swipe-specific edge-detection
+logic has 8 passing tests exercising the real `interactionStore` (not a
+mock) — including a dedicated "two consecutive same-direction swipes both
+register" case and a "held pose doesn't refire every throttle tick"
+case — this is recorded as a known, honest gap in *live* verification
+rather than left unstated.
+
+## How to resume: Phase 9, Face tracking
+
+No placeholder exists yet for this phase — Face tracking adds a new
+capability (`FaceLandmarker`) rather than a new module route; check
+IMPLEMENTATION.md §11's phase table (`FaceLandmarker, mesh/eye/mouth viz`)
+and the repo layout's `vision/face/` entry (§2) for the intended shape
+before starting.
+
+**Gate for this phase**: *"Tracking only — no attribute claims."* Worth
+reading literally: this phase must not infer or display anything about
+who a face belongs to, their emotional state, age, or identity — mesh/eye/
+mouth tracking only, MODEL-tagged like hand landmarks are.
+
+Reuse checklist: `VisionEngine`/`LandmarkSource`/`VisionTaskRequest`
+already support `face: boolean` in their task-subscription shape
+(IMPLEMENTATION.md §1.2) — this phase is about implementing the
+`FaceLandmarker` wrapper and wiring it through machinery that already
+expects it, not inventing new plumbing. `docs/COMPUTER_VISION.md` says
+this outright: "Phase 9/10 add `FaceLandmarker` and `PoseLandmarker`
+behind this same `LandmarkSource`/`VisionEngine` pair, no architectural
+changes required." No open questions parked for this phase in
+IMPLEMENTATION.md §13.
 
 ## Architecture quick-reference (see docs/ARCHITECTURE.md for full detail)
 
@@ -305,7 +398,7 @@ questions parked for this phase in IMPLEMENTATION.md §13.
 ```bash
 npm run typecheck   # tsc -b across all 3 workspaces
 npm run lint        # eslint, includes the boundaries rule
-npm run test:run    # vitest run — 126 tests as of end of Phase 7
+npm run test:run    # vitest run — 145 tests as of end of Phase 8
 npm run build       # tsc + vite build, all 3 workspaces
 ```
 Run all four before considering any phase done. `npm run dev` (or the
@@ -450,6 +543,27 @@ if you don't know to watch for it.
     not just its visual smoothness — a coarse approximation can silently
     shrink the effective collision volume below what the radius parameter
     promises, especially for glancing/near-tangent rays.
+
+11. **Testing Library components stayed mounted across an entire test
+    file** (Phase 8). `apps/web/src/test/setup.ts` never called Testing
+    Library's `cleanup()`, because nothing before Phase 8 rendered a
+    component or called `renderHook()` more than once in a run — every
+    earlier test exercised pure logic or a class singleton directly.
+    `usePresentGestureCommands.test.tsx` was the first file to call
+    `renderHook()` from multiple `it()` blocks, and every instance from
+    every earlier test in the file stayed mounted and subscribed for the
+    rest of the run: a single `setActiveGesture(...)` call was picked up
+    by *all* of them, each independently calling `nextSlide()`/
+    `startTimer()`, so what should have been one event turned into
+    several (a swipe test asserting `slideIndex === 1` got `2`). Fixed by
+    adding `afterEach(cleanup)` (from `@testing-library/react`) to the
+    shared setup file. **Lesson**: this wasn't specific to Presentation —
+    it's a property of the test harness itself, invisible until the first
+    test file exercised a mounted component more than once per run. Any
+    future `render`/`renderHook` usage would have hit it silently. If a
+    component/hook test's assertions look like an event fired more times
+    than it should have, check for this before assuming the code under
+    test is wrong.
 
 ## Process notes for whoever (whatever) continues this
 
