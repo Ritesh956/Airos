@@ -23,7 +23,7 @@ split, why three stores, the Interaction Engine),
 code — each documents real thresholds and real bugs found while building, not
 just design intent.
 
-## Status: Phases 1–11 complete. Resume at Phase 12 (Game Mode).
+## Status: Phases 1–12 complete. Resume at Phase 13 (Analytics + Perf).
 
 | # | Phase | Status |
 |---|---|---|
@@ -38,8 +38,8 @@ just design intent.
 | 9 | Face tracking | ✅ done |
 | 10 | Pose tracking | ✅ done |
 | 11 | Voice + Command Center | ✅ done |
-| **12** | **Game Mode** | **← start here** |
-| 13 | Analytics + Perf | pending |
+| 12 | Game Mode | ✅ done |
+| **13** | **Analytics + Perf** | **← start here** |
 | 14 | Polish | pending |
 
 ### Git status: nothing committed yet
@@ -601,24 +601,115 @@ stop-retry, start() idempotency) is covered instead by seven
 automated here. Flagged plainly rather than claimed as something it
 wasn't, per this file's own quality bar on fabricated confidence.
 
-## How to resume: Phase 12, Game Mode
+## Phase 12 shipped: Game Mode
 
-Check IMPLEMENTATION.md §11's phase table (`Gesture-controlled game` /
-"Playable end-to-end by hand alone") and the repo layout's `modules/game/`
-entry (§2) — `moduleRegistry.tsx`'s `game` entry currently renders
-`ui/ModulePlaceholder.tsx`, the last real placeholder besides Analytics.
-Unlike Phases 9–11, this phase *is* a new module with real gameplay logic,
-not another capability bolted onto an existing pipeline — closer in shape
-to Air Draw or 3D Studio (Phase 6/7's own Interaction Engine + module
-split) than to Face/Pose/Voice's "no new route" pattern. Reuse checklist:
-the gesture engine, `interaction/commands/CommandRouter.ts` for keyboard
-parity (§1.6 still applies — a game needs to be playable by keyboard too,
-not gesture-only), and `vision/replay/fixtures.ts`'s synthetic hand for a
-Demo-Mode-playable version, same as every gesture-driven module before it.
-No open questions parked for this phase in IMPLEMENTATION.md §13 — the
-brief just says "gesture-controlled game," so the specific game concept
-is this phase's first real design decision, not something already decided
-upstream.
+A new module with real gameplay logic, not another capability bolted
+onto an existing pipeline — closer in shape to Air Draw/3D Studio (its
+own Interaction Engine + module split) than to Face/Pose/Voice's "no new
+route" pattern. The concept — a small vertical shooter — was already
+staked out by `moduleRegistry.tsx`'s own pre-existing placeholder copy
+(written back in Phase 1 scaffolding, before this phase touched
+anything): "a spaceship controlled by index-finger position... pinch to
+fire, open palm to raise a shield... kept deliberately simple: the
+interaction quality is the point, not the game design." That placeholder
+text was treated as the real design brief rather than overridden with an
+unrelated concept. Composed from:
+- `interaction/game/GameEngine.ts` — structurally a copy of
+  `DrawEngine.ts` (sticky-hand-selection, reach-boxed, One-Euro-filtered
+  fingertip pointer + raw gesture), the same "engine stays generic, the
+  module owns the domain logic" split every Interaction Engine in this
+  app holds itself to.
+- `modules/game/gameSimulation.ts` — the actual game as a pure,
+  deterministic function: `stepSimulation(state, dtMs, shieldActive)`
+  moves enemies/projectiles, spawns on a score-scaled cadence, resolves
+  collisions, and resolves an enemy reaching the bottom (blocked for
+  free by an active shield, otherwise a life lost) — the same "pure
+  core, thin stateful wrapper" split `presentStore.ts`'s timer math
+  uses, chosen for the same reason: 20 unit tests exercise spawn
+  cadence, collision, shield-blocking, and the game-over transition with
+  plain synchronous assertions, no real clock, no rAF, no randomness
+  (an injectable `randomX` makes spawn position deterministic in tests).
+- `modules/game/gameState.ts` — the hot-path mutable singleton
+  (`drawStrokes.ts`'s pattern) wrapping the pure simulation; `gameStore.ts`
+  the cold-path summary (`drawStore.ts`'s pattern) a HUD reads reactively,
+  including a `localStorage`-persisted high score.
+- `modules/game/GameCanvas.tsx` — `DrawCanvas.tsx`'s pattern again: its
+  own self-driven `requestAnimationFrame` loop (not a push subscription —
+  the simulation must keep advancing every frame regardless of whether a
+  hand is currently tracked, the identical reasoning bug #9 established),
+  reading `GameEngine`'s per-frame pointer for steering and an
+  edge-detected PINCH for fire, plus full real mouse (`pointermove`/
+  `click`) and keyboard (arrow keys, Space, Shift) parity wired directly
+  — bypassing `CommandRouter` for the same reason `DrawCanvas`'s mouse
+  listeners do: firing and steering are continuous/reflex actions, not
+  one-shot commands.
+- `modules/game/useGameGestureCommands.ts` — THUMBS_UP starts/resumes,
+  FIST pauses, reusing `usePresentGestureCommands.ts`'s held-pose
+  edge-detection pattern rather than reinventing it — and a deliberate
+  cross-module consistency: the same two gestures mean the same two
+  things in both Presentation and Game Mode. Read from the throttled
+  `interactionStore.activeGesture` (not `GameEngine`'s per-frame
+  channel), since starting/pausing isn't reflex-latency-sensitive the
+  way firing is.
+- `modules/game/useGameKeyboardCommands.ts` — the same 's'/'p'/'r'
+  bindings Presentation uses for its timer, another deliberate
+  cross-module consistency, registered through `CommandRouter` for the
+  three genuinely discrete actions (Start/Resume, Pause, Restart). Fire
+  and shield stay out of this registry on purpose — see `GameCanvas.tsx`'s
+  doc comment for why forcing a held/continuous action through a
+  one-shot command registry would misrepresent how it actually plays.
+
+`moduleRegistry.tsx`'s `game` entry flipped from `status: 'planned'` to
+`'ready'` — the last module besides Analytics to do so.
+
+### A verification limit worth recording (not a code bug)
+
+Confirmed live in a real Chrome tab, extensively: Start/Pause/Resume/
+Restart all correctly transitioning `status` and the Game Over/Paused
+overlay; mouse steering (the ship visibly tracking the pointer); click-fire
+producing a real moving projectile; a spawned enemy actually colliding
+with a projectile, destroying both, and awarding the score (+10, matching
+`SCORE_PER_KILL`); the high score correctly persisting to `localStorage`
+across a Restart (score resets to 0, "Best" stays at the prior high).
+**Not** independently confirmed live: Demo Mode's gesture-driven play
+(steering/firing/shielding via the synthetic hand specifically, as
+opposed to their mouse/keyboard equivalents). Partway through that check
+the browser window lost OS-level foreground focus — confirmed via
+`document.hidden` staying `true` even across a full page reload and in a
+freshly-opened tab, and directly proven inert (not just slow) by
+monkey-patching `CanvasRenderingContext2D.prototype.moveTo` and observing
+zero calls across 10+ real seconds, meaning `requestAnimationFrame`
+callbacks simply were not firing at all — a condition no tool available
+in this session could restore focus from. This is the same category of
+environment limitation CLAUDE.md already documents for the sandboxed
+preview pane, just observed this time on the real-Chrome surface that
+had reliably sidestepped it in Phases 10–11. Given that, confidence
+instead rests on: the PINCH-fire and OPEN_PALM-shield code paths being
+structurally identical to the verified click/Shift-hold paths (the exact
+same `gameApi.fire()` call and `shieldActive` boolean, just fed from
+`GameEngine`'s gesture field instead of a DOM event), and
+`gameSimulation.test.ts`'s 20 cases covering the underlying mechanics
+directly. Flagged plainly rather than claimed as verified, per this
+file's own quality bar on fabricated confidence.
+
+## How to resume: Phase 13, Analytics + Perf
+
+Check IMPLEMENTATION.md §11's phase table (`Real metrics, FPS graph,
+debug mode, degradation ladder` / "Metrics match DevTools") and §9's
+performance budget and degradation ladder — this is the first phase
+whose entire job is making already-real numbers (FPS, inference time,
+hand/face/pose counts) visible as a proper dashboard, and *implementing*
+§9's degradation ladder (drop capture resolution → reduce numHands →
+halve inference rate → disable secondary tasks → recommend Demo Mode),
+which nothing has actually triggered automatically yet — every prior
+phase's FPS readout has been a passive display of `visionStore.fps`,
+never an input to a decision the app makes on its own. `visionStore.ts`'s
+`fpsHistory` ring buffer (120 samples) already exists and already feeds
+nothing but a raw number today — check whether a graph component reads
+it before building one. §12's "no metric is ever estimated, faked, or
+smoothed to look better than it is" applies with extra weight here, since
+this phase's whole point is displaying performance honestly. No open
+questions parked for this phase in IMPLEMENTATION.md §13.
 ## Architecture quick-reference (see docs/ARCHITECTURE.md for full detail)
 
 - **Three state stores**: `appStore` (module/camera/settings, user-driven),
@@ -660,7 +751,7 @@ upstream.
 ```bash
 npm run typecheck   # tsc -b across all 3 workspaces
 npm run lint        # eslint, includes the boundaries rule
-npm run test:run    # vitest run — 183 tests as of end of Phase 11
+npm run test:run    # vitest run — 203 tests as of end of Phase 12
 npm run build       # tsc + vite build, all 3 workspaces
 ```
 Run all four before considering any phase done. `npm run dev` (or the
@@ -877,7 +968,16 @@ if you don't know to watch for it.
   `StudioScene.tsx`). If Demo Mode looks inert (readouts stuck at idle/0,
   a Studio scene stuck with objects piled at the origin) in that pane
   specifically, don't assume the app is broken — drive it through a real,
-  visible browser tab instead before concluding anything.
+  visible browser tab instead before concluding anything. Phase 12 hit the
+  same symptom on the real-Chrome automation surface too (which had
+  reliably sidestepped it in Phases 10–11) — the window had lost OS-level
+  foreground focus. To tell "genuinely broken" apart from "just
+  backgrounded and throttled to a crawl," monkey-patch a relevant canvas
+  method (e.g. `CanvasRenderingContext2D.prototype.moveTo`) via the
+  browser tool's JS-eval to count real calls over several seconds: zero
+  calls means `requestAnimationFrame` isn't firing at all (a focus/
+  visibility problem to fix by refocusing the window, not a code bug to
+  chase), while a trickle of calls means it's just severely throttled.
 - **Two browser-automation gotchas that cost real time in Phase 6, worth
   knowing before you doubt the app instead of the test:**
   1. Reading a toggle's `aria-checked` (or any state) in the *same* script
@@ -928,7 +1028,7 @@ if you don't know to watch for it.
   cheap thing to try before assuming your code is wrong.
 - `IMPLEMENTATION.md` and `README.md` both have a status line near the
   top that should be updated at the end of each phase (both correctly say
-  "Phases 1–11 complete" as of this phase — they drifted out of sync for
+  "Phases 1–12 complete" as of this phase — they drifted out of sync for
   several phases in a row before being caught and corrected here). Keep
   them in sync — they're the first thing a reader (or a future session)
   checks.

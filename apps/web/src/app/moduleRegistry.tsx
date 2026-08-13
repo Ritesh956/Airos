@@ -109,7 +109,7 @@ export const MODULE_REGISTRY: ModuleDescriptor[] = [
     icon: GameIcon,
     shortcut: '7',
     phase: 12,
-    status: 'planned',
+    status: 'ready',
     component: lazy(() => import('@/modules/game/GameModule')),
   },
   {

@@ -261,9 +261,16 @@ Web Speech API and dispatches recognized phrases through the same
 "open 3d studio" spoken aloud runs the identical code path as clicking it
 in the palette or pressing its keyboard shortcut — with the browser's
 lack-of-support case rendering an explanatory message instead of a dead
-toggle. The remaining module
-(`Game Mode`) and `Analytics` are real,
-navigable routes that render `ui/ModulePlaceholder.tsx` — an honest "not
-built yet, here's what's planned and in which phase" screen, not a fake
-button that pretends to do something. See IMPLEMENTATION.md §11 for the
-full phase plan, or CLAUDE.md for exactly where things stand right now.
+toggle, and Game Mode (Phase 12) — a small vertical shooter proving the
+pipeline is fast and precise enough to actually play with: point to
+steer, pinch to fire, hold an open palm to raise a shield, with the
+entire game (enemy movement, spawning, collisions, lives) implemented as
+a pure, unit-tested `stepSimulation()` function
+(`modules/game/gameSimulation.ts`) a thin stateful wrapper drives every
+animation frame — the same "pure core, thin wrapper" split Presentation's
+timer math established. The remaining module (`Analytics`) is the one
+real, navigable route that still renders `ui/ModulePlaceholder.tsx` — an
+honest "not built yet, here's what's planned and in which phase" screen,
+not a fake button that pretends to do something. See IMPLEMENTATION.md
+§11 for the full phase plan, or CLAUDE.md for exactly where things stand
+right now.
