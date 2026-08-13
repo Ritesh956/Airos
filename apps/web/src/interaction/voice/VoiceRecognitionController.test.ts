@@ -154,4 +154,60 @@ describe('VoiceRecognitionController — with a recognizer available', () => {
 
     expect(FakeSpeechRecognition.instances).toHaveLength(1);
   });
+
+  it('backs off before restarting after a non-fatal error, instead of restarting on the same tick', () => {
+    vi.useFakeTimers();
+    try {
+      window.SpeechRecognition = FakeSpeechRecognition as unknown as typeof window.SpeechRecognition;
+      const controller = new VoiceRecognitionController(vi.fn(), vi.fn());
+
+      controller.start();
+      const first = FakeSpeechRecognition.latest();
+      first.onerror?.({ error: 'network' });
+      first.onend?.();
+
+      // Immediately after onend: no new instance yet — this is the exact
+      // gap that used to be missing, which is what made the status pill
+      // flicker between Listening and Error every restart with no delay.
+      expect(FakeSpeechRecognition.instances).toHaveLength(1);
+
+      vi.advanceTimersByTime(2000);
+      expect(FakeSpeechRecognition.instances).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives up after repeated consecutive network errors instead of retrying forever', () => {
+    vi.useFakeTimers();
+    try {
+      window.SpeechRecognition = FakeSpeechRecognition as unknown as typeof window.SpeechRecognition;
+      const onStateChange = vi.fn();
+      const controller = new VoiceRecognitionController(vi.fn(), onStateChange);
+
+      controller.start();
+      // Three consecutive failures with no successful 'listening' state in
+      // between — matches MAX_CONSECUTIVE_ERRORS.
+      for (let i = 0; i < 3; i++) {
+        const recognizer = FakeSpeechRecognition.latest();
+        recognizer.onerror?.({ error: 'network' });
+        recognizer.onend?.();
+        vi.advanceTimersByTime(2000);
+      }
+
+      const instanceCountAfterGivingUp = FakeSpeechRecognition.instances.length;
+
+      // No further restart should be scheduled — advancing time well past
+      // another retry window must not spin up another instance.
+      vi.advanceTimersByTime(10_000);
+      expect(FakeSpeechRecognition.instances).toHaveLength(instanceCountAfterGivingUp);
+
+      // The final reported state is the error, not a silent 'off' —
+      // overwriting it would misreport that voice control just turned
+      // itself off cleanly when it actually gave up after failing.
+      expect(onStateChange).toHaveBeenLastCalledWith('error', 'network');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

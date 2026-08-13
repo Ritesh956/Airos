@@ -32,6 +32,31 @@ export class VoiceRecognitionController {
   private armed = false;
   private onResult: ResultHandler;
   private onStateChange: StateHandler;
+  private retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  /** Consecutive non-benign errors since the last successful `onstart` —
+   *  reset to 0 there. Lets one real, transient failure (a genuine network
+   *  blip) retry normally, while a *tight* failure loop (no reachable
+   *  speech backend, a persistent device issue) gives up instead of
+   *  restarting forever with zero delay — see `onerror`/`onend` below for
+   *  the bug this closes. */
+  private consecutiveErrors = 0;
+  /** Set alongside `armed = false` when we disarm ourselves because of a
+   *  real error (permission denied, no mic, or too many consecutive
+   *  failures) — read by `onend` so it reports that error as the final
+   *  state instead of silently overwriting it with `'off'` a moment
+   *  later, which would look like nothing went wrong. Reset by an
+   *  explicit `stop()`, which should always report `'off'`. */
+  private disarmedByError = false;
+
+  private static readonly MAX_CONSECUTIVE_ERRORS = 3;
+  /** How long to wait before retrying after a non-fatal error, instead of
+   *  restarting on the very same tick `onend` fires. Without this, a
+   *  backend that fails instantly on every `start()` call (e.g. no real
+   *  network route to the browser's speech-recognition service) produces
+   *  a start→error→end→start loop with no gap at all — reported live as
+   *  the status pill visibly flickering between Listening and Error
+   *  several times a second. */
+  private static readonly RETRY_DELAY_MS = 2000;
 
   constructor(onResult: ResultHandler, onStateChange: StateHandler) {
     this.onResult = onResult;
@@ -47,6 +72,8 @@ export class VoiceRecognitionController {
       return;
     }
     this.armed = true;
+    this.disarmedByError = false;
+    this.consecutiveErrors = 0;
     this.attachAndStart(Ctor);
   }
 
@@ -54,6 +81,11 @@ export class VoiceRecognitionController {
   stop(): void {
     if (!this.armed) return;
     this.armed = false;
+    this.disarmedByError = false;
+    if (this.retryTimeoutId) {
+      clearTimeout(this.retryTimeoutId);
+      this.retryTimeoutId = null;
+    }
     this.recognition?.stop();
   }
 
@@ -63,7 +95,10 @@ export class VoiceRecognitionController {
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => this.onStateChange('listening', null);
+    recognition.onstart = () => {
+      this.consecutiveErrors = 0;
+      this.onStateChange('listening', null);
+    };
 
     recognition.onresult = (event) => {
       const result = event.results[event.results.length - 1];
@@ -75,10 +110,26 @@ export class VoiceRecognitionController {
       if (isBenignVoiceError(event.error)) return; // e.g. 'no-speech' — onend below restarts it
       const reason = classifyVoiceError(event.error);
       this.onStateChange('error', reason);
-      // Can't recover without the user re-granting access or plugging in a
-      // mic — stop trying rather than looping restart attempts forever.
+
       if (reason === 'permission-denied' || reason === 'no-microphone') {
+        // Can't recover without the user re-granting access or plugging in
+        // a mic — stop trying rather than looping restart attempts forever.
         this.armed = false;
+        this.disarmedByError = true;
+        return;
+      }
+
+      this.consecutiveErrors += 1;
+      if (this.consecutiveErrors >= VoiceRecognitionController.MAX_CONSECUTIVE_ERRORS) {
+        // Repeated failures with no successful 'listening' state landed in
+        // between — not a transient blip (a real one-off network hiccup
+        // would typically succeed within the first retry or two).
+        // Retrying forever here is what turned a single bad request into
+        // an open-ended restart loop; give up the same way the two
+        // unrecoverable reasons above already do. Toggling voice control
+        // off and back on tries again from a clean state.
+        this.armed = false;
+        this.disarmedByError = true;
       }
     };
 
@@ -88,10 +139,25 @@ export class VoiceRecognitionController {
         // mode — restart to keep listening for as long as voice control
         // stays enabled. A fresh instance sidesteps quirks some browsers
         // have reusing an already-ended SpeechRecognition object.
-        this.attachAndStart(Ctor);
+        if (this.consecutiveErrors > 0) {
+          // A non-fatal error (network/unknown) just preceded this end —
+          // whatever's wrong probably hasn't cleared yet. Back off instead
+          // of restarting instantly, which is the actual mechanism behind
+          // the flicker this class used to produce.
+          this.retryTimeoutId = setTimeout(() => {
+            this.retryTimeoutId = null;
+            if (this.armed) this.attachAndStart(Ctor);
+          }, VoiceRecognitionController.RETRY_DELAY_MS);
+        } else {
+          this.attachAndStart(Ctor);
+        }
       } else {
         this.recognition = null;
-        this.onStateChange('off', null);
+        // Only report 'off' for an explicit stop(). If we just disarmed
+        // ourselves because of a real error, that error (already reported
+        // above) is the honest final state — silently overwriting it with
+        // 'off' a moment later would misreport what actually happened.
+        if (!this.disarmedByError) this.onStateChange('off', null);
       }
     };
 
