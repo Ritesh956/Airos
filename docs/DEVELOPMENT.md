@@ -77,7 +77,22 @@ this app needs no backend at all to demo — every module works fully
 against Demo Mode's synthetic fixture with the server offline (see
 IMPLEMENTATION.md §10's "the app is fully functional with the server
 offline"). A static host serving just `apps/web/dist/` also works if the
-health endpoint and WS relay aren't needed for a given deployment.
+health endpoint and WS relay aren't needed for a given deployment — if you
+go that route, make sure whatever host serves `apps/web/dist/` gzip/brotli
+compresses responses itself, since `@airos/server`'s `compression()`
+middleware (see below) won't be in the request path.
+
+`@airos/server` gzip/brotli-compresses every response (`compression()` in
+`apps/server/src/index.ts`) — this matters more than it sounds like for
+this app specifically, since the MediaPipe WASM runtime and model files
+served from `apps/web/public/models/` are multi-megabyte binaries. A real
+Lighthouse audit against `npm run build && npm run start` caught this
+missing in production (see CLAUDE.md's "Post-Phase-14: Lighthouse actually
+run" and bug #15) — total page weight on that audit halved once it was
+added. Run `npx lighthouse http://localhost:8787/
+--chrome-flags="--headless=new --no-sandbox"` against a production build
+to reproduce or re-check the score after a future change; reports aren't
+committed (`.lighthouse/` is gitignored).
 
 No containerization or CI config exists yet — deliberately out of scope
 for this pass rather than an oversight; add one when a specific target

@@ -489,14 +489,27 @@ Parked until the relevant phase; recorded so they don't get silently decided.
    cost. "Measured first" landed in Phase 13 (`vision.inferenceMs`, the Analytics
    dashboard, `docs/PERFORMANCE.md`'s budget table) — the instrumentation to make
    this decision with real numbers now exists, but no session has yet run it
-   against real camera hardware for long enough to say whether inference
-   routinely threatens the ≤12ms target/20ms ceiling. **Still open**: check
-   Analytics' "Inference time" readout under real load before deciding either
-   way — don't infer an answer from the degradation ladder existing, since that
-   ladder triggers on *frame rate*, not inference time specifically, and can
-   mask a slow-but-not-ceiling-breaking inference cost. `VisionEngine` is
-   deliberately an async, message-shaped interface so this becomes a swap, not
-   a rewrite, whenever it's decided.
+   against real camera hardware for long enough to say whether *sustained
+   per-frame inference* routinely threatens the ≤12ms target/20ms ceiling.
+   **Still open on that question specifically** — check Analytics' "Inference
+   time" readout under real camera load before deciding either way; don't infer
+   an answer from the degradation ladder existing, since that ladder triggers
+   on *frame rate*, not inference time specifically, and can mask a
+   slow-but-not-ceiling-breaking inference cost.
+
+   One adjacent data point does now exist, though, from a different angle: a
+   post-Phase-14 Lighthouse audit against the real production build (see
+   CLAUDE.md's "Post-Phase-14: Lighthouse actually run" and bug #15) measured
+   ~1.1s of Total Blocking Time dominated by WASM script evaluation/compilation
+   on the main thread during initial page load — a one-time cold-start cost,
+   not the sustained per-frame inference cost this question is actually about,
+   but real evidence that MediaPipe's WASM work is expensive enough on the main
+   thread to matter for *something*. That audit's fix (deferring the preload to
+   an idle callback) addressed the cold-start collision with first paint; it
+   says nothing about whether a Worker is warranted for steady-state inference.
+   `VisionEngine` is deliberately an async, message-shaped interface so this
+   becomes a swap, not a rewrite, whenever the real-camera-load question above
+   is actually answered.
 2. **Model hosting** — vendored into `public/models/` for offline use and CDN
    independence. Revisit if bundle size becomes a deployment problem.
 3. ~~**Two-hand rotation mapping**~~ — **Resolved in Phase 6**: vector angle

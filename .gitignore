@@ -31,6 +31,9 @@ npm-debug.log*
 # Vite
 .vite/
 
+# Local Lighthouse audit output (npx lighthouse ... --output-path=.lighthouse/*)
+.lighthouse/
+
 # Vendored MediaPipe WASM runtime + model files — fetched by
 # apps/web/scripts/fetch-models.mjs (runs on postinstall). Large binaries,
 # deliberately not committed. See docs/COMPUTER_VISION.md.

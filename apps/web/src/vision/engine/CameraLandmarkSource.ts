@@ -16,6 +16,24 @@ import type { LandmarkSource } from './LandmarkSource';
 type LoopHandle = { kind: 'vfc'; id: number; video: HTMLVideoElement } | { kind: 'raf'; id: number } | null;
 
 /**
+ * Defers a preload fetch/compile to a browser idle slot instead of firing it
+ * synchronously the instant a task is acquired. The preload itself is still
+ * "fire and forget, ready before the user clicks Start" (see start()'s doc
+ * comment) — this only changes *when* it's scheduled, so the WASM download
+ * and instantiation (both real CPU/network cost — a 10MB+ wasm binary) don't
+ * compete with the initial page paint on routes that acquire the hand task
+ * on mount (e.g. Home, for Demo Mode). Falls back to setTimeout for browsers
+ * without requestIdleCallback (Safari, as of writing).
+ */
+function scheduleIdlePreload(fn: () => void): void {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => fn(), { timeout: 2000 });
+  } else {
+    setTimeout(fn, 200);
+  }
+}
+
+/**
  * The real thing: runs MediaPipe detection against the live camera feed.
  *
  * Deliberately does NOT call `cameraManager.start()` itself. Requesting
@@ -49,14 +67,14 @@ export class CameraLandmarkSource implements LandmarkSource {
     if (this.armed) return;
     this.armed = true;
 
-    if (tasks.hand) {
-      // Fire-and-forget: warms the model while we wait on camera state, so
-      // the first real frame after the camera comes up isn't also paying
-      // for the WASM/model download.
-      void preloadHandLandmarker();
-    }
-    if (tasks.face) void preloadFaceLandmarker();
-    if (tasks.pose) void preloadPoseLandmarker();
+    // Fire-and-forget: warms the model(s) while we wait on camera state, so
+    // the first real frame after the camera comes up isn't also paying for
+    // the WASM/model download. Scheduled at idle (see scheduleIdlePreload's
+    // doc comment) rather than immediately, so it doesn't compete with
+    // initial page paint on a route that acquires a task on mount.
+    if (tasks.hand) scheduleIdlePreload(() => void preloadHandLandmarker());
+    if (tasks.face) scheduleIdlePreload(() => void preloadFaceLandmarker());
+    if (tasks.pose) scheduleIdlePreload(() => void preloadPoseLandmarker());
 
     this.unsubscribeAppStore = appStore.subscribe(() => this.syncWithCameraState());
     this.syncWithCameraState();
@@ -64,9 +82,9 @@ export class CameraLandmarkSource implements LandmarkSource {
 
   updateTasks(tasks: VisionTaskRequest): void {
     this.tasks = tasks;
-    if (tasks.hand) void preloadHandLandmarker();
-    if (tasks.face) void preloadFaceLandmarker();
-    if (tasks.pose) void preloadPoseLandmarker();
+    if (tasks.hand) scheduleIdlePreload(() => void preloadHandLandmarker());
+    if (tasks.face) scheduleIdlePreload(() => void preloadFaceLandmarker());
+    if (tasks.pose) scheduleIdlePreload(() => void preloadPoseLandmarker());
   }
 
   stop(): void {

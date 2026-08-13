@@ -47,14 +47,13 @@ maintenance/extension work, not a queued next phase — see "Where things
 stand now" at the end of this file for what a future session should
 actually check before assuming anything below is still accurate.
 
-### Git status: nothing committed yet
+### Git status: one commit per phase, plus doc fixes
 
-This repo has **zero commits** (`git log` → "does not have any commits yet").
-Everything from Phase 1 through Phase 6 is sitting in the working tree,
-untracked/uncommitted. The user hasn't asked for a commit yet — don't commit
-unless explicitly asked, per standing instructions. If asked to commit,
-consider whether it should be one commit per phase (matches the gate
-structure) or one big initial commit — ask if unclear.
+The repo has a real commit history: one commit per phase (`Phase 1:
+Architecture + Camera` through `Phase 14: Polish`), plus a follow-up
+`Fix stale docs` commit. Don't commit unless explicitly asked, per standing
+instructions — this note exists only so a future session doesn't assume an
+empty/uncommitted working tree the way earlier phases correctly did.
 
 ## Phase 5 shipped: Gesture Lab
 
@@ -913,6 +912,67 @@ production would. Any future phase that touches a workspace package's
 `npm run build && npm run start`, not just `npm run build`, before
 considering it done.
 
+## Post-Phase-14: Lighthouse actually run, two real perf fixes found
+
+Phase 14 flagged Lighthouse as the one piece of its own gate left
+unverified (Lighthouse CLI wasn't installed, and installing a new
+devDependency plus running a full Chrome audit unprompted was judged too
+big a unilateral call at the time). A later session ran it — `npm run
+build && npm run start`, then `npx lighthouse http://localhost:8787/
+--chrome-flags="--headless=new --no-sandbox"` — and it surfaced two real,
+fixable production issues, not just a number to record:
+
+1. **The server sent every response uncompressed.** No gzip/brotli at
+   all — `apps/server/src/index.ts` had no compression middleware, so the
+   MediaPipe WASM runtime (~11MB) and hand-landmarker model (~7.6MB) went
+   over the wire completely raw. Lighthouse's "Enable text compression"
+   audit flagged an estimated 8.4MB of savings — the single biggest
+   finding. Fixed with the standard `compression` npm package
+   (`app.use(compression())`, added before the static-file serving
+   middleware) — total measured page weight dropped from 19.4MB to
+   10.9MB on the same audit page.
+2. **The hand-tracking model preloaded eagerly on the Home page, before
+   the user asks for anything.** `CameraControlPanel.tsx` (Home page)
+   calls `useVisionTask({ hand: true })` unconditionally on mount — by
+   design, so Demo Mode works with zero camera permission (see the
+   comment there). But `CameraLandmarkSource.start()`'s "fire-and-forget"
+   preload (`void preloadHandLandmarker()`) ran synchronously the instant
+   that task was acquired, meaning **every single Home-page visit**
+   kicked off an ~18.5MB WASM+model download and a heavy synchronous
+   WASM-compile on the main thread before the visitor had touched
+   anything — directly competing with initial paint for both network and
+   CPU. This showed up as Lighthouse's "Reduce JavaScript execution time"
+   / "Minimize main-thread work" audits and a 1s+ Total Blocking Time.
+   Fixed by wrapping the three `preload*Landmarker()` calls (hand/face/
+   pose) in both `start()` and `updateTasks()` with a new
+   `scheduleIdlePreload()` helper (`requestIdleCallback`, falling back to
+   `setTimeout` for Safari) — same "warm it before the user clicks Start"
+   behavior, just scheduled after the browser's had a chance to paint
+   instead of racing it. Verified live (real Chrome tab, not the
+   sandboxed pane): toggling Demo Mode on Home still fetches all three
+   model assets and MediaPipe still reports "Graph successfully started
+   running" with no console errors — the deferral doesn't break the
+   warm-up, it just stops it from blocking the first paint.
+
+**Net effect**: Performance category 50 → 71 (FCP 4.3s→2.3s, LCP
+4.8s→2.6s, TTI 8.1s→3.6s, total page weight 19.4MB→10.9MB on the same
+audit run). Accessibility stayed 100, Best Practices stayed 100, SEO
+stayed 91 — Phase 14's a11y work already covered those. **71 is still
+short of the §11 gate's "Lighthouse ≥90"** — the remaining gap is
+concentrated in Total Blocking Time (~1.1s, mostly WASM script
+evaluation/compilation, plus the ~570KB/180KB-gzip main JS chunk), not
+anything a quick fix resolves. This is the same territory as
+IMPLEMENTATION.md §13's still-open Web Worker question (moving MediaPipe
+compilation/inference off the main thread) — see that section, now
+updated with this session's real measured numbers as the first concrete
+data point toward answering it. Chasing the remaining ~19 points further
+(off-main-thread WASM, more aggressive code-splitting of the main
+vendor chunk) is a real architecture change, not a docs/config fix, and
+wasn't done unilaterally in this pass for the same reason Phase 14
+didn't reach for a Web Worker either — it's the open question, not a
+quick win. Raw reports aren't committed (`.lighthouse/` is now
+gitignored) — rerun the command above to reproduce.
+
 ## Where things stand now
 
 All 14 phases are complete and the full gate (`typecheck && lint &&
@@ -1229,6 +1289,35 @@ if you don't know to watch for it.
     production would. Any future change to a workspace package's
     `package.json` (`main`, `exports`, adding a new entry point) should
     smoke-test `npm run build && npm run start`, not just `npm run build`.
+
+15. **The Home page downloaded ~18.5MB of ML models before the visitor
+    touched anything, and the production server sent it all
+    uncompressed** (post-Phase-14 maintenance, once Lighthouse was
+    finally run against a real production build). Two separate bugs, both
+    invisible to `npm run build`/`typecheck`/`lint`/`test`, both only
+    found by actually auditing the built artifact under
+    `npm run start`: (a) `apps/server/src/index.ts` had no gzip/brotli
+    compression middleware at all, so every static asset — including the
+    ~11MB MediaPipe WASM runtime and ~7.6MB hand-landmarker model — went
+    over the wire raw; (b) `CameraLandmarkSource.start()`'s "warm the
+    model before the user clicks Start" preload ran synchronously the
+    instant the hand task was acquired, and `CameraControlPanel.tsx`
+    (Home) acquires that task unconditionally on mount for Demo Mode —
+    so *every* Home-page visit triggered an immediate multi-megabyte
+    download plus a heavy synchronous WASM compile competing with the
+    page's own first paint. Fixed with `compression()` middleware and a
+    `scheduleIdlePreload()` wrapper (`requestIdleCallback`, `setTimeout`
+    fallback) around the three `preload*Landmarker()` calls in
+    `CameraLandmarkSource.ts` — same warm-up behavior, just deferred past
+    the paint instead of racing it. See "Post-Phase-14: Lighthouse
+    actually run" above for the measured before/after. **Lesson**: this
+    is bug #14's lesson one layer further out — `npm run build` passing,
+    and even `npm run start` *responding*, still isn't the same claim as
+    "the production artifact performs well," because neither compression
+    nor preload-timing has a code path that fails or errors when done
+    wrong. Only an actual Lighthouse/perf audit against the real built
+    artifact surfaces this class of bug; nothing in the existing gate
+    would ever catch it.
 
 ## Process notes for whoever (whatever) continues this
 
