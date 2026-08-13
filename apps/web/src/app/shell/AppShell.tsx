@@ -6,6 +6,7 @@ import { StatusBar } from './StatusBar';
 import { CommandPalette } from './CommandPalette';
 import { useNavigationCommands } from './useNavigationCommands';
 import { useGlobalKeyboardCommands } from '@/hooks/useGlobalKeyboardCommands';
+import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 function ModuleFallback() {
@@ -22,6 +23,7 @@ export function AppShell() {
 
   useNavigationCommands();
   useGlobalKeyboardCommands();
+  useVoiceCommands();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface-0 text-ink-0">

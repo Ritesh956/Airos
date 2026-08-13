@@ -3,10 +3,10 @@
 **Interact with your computer without touching it.**
 
 AIR OS is a browser-based, touchless computer interface controlled by
-real-time hand gestures — with face tracking, body tracking, and voice
-control planned as the project progresses. All computer-vision inference
-runs locally in the browser via pretrained MediaPipe models; camera frames
-are never uploaded, recorded, or sent to a server.
+real-time hand gestures, with face tracking, pose tracking, and voice
+control alongside it. All computer-vision inference runs locally in the
+browser via pretrained MediaPipe models; camera frames are never uploaded,
+recorded, or sent to a server.
 
 This is a portfolio-level engineering project, built in phases, with each
 phase verified before the next begins. See **[IMPLEMENTATION.md](IMPLEMENTATION.md)**
@@ -15,10 +15,10 @@ decision — start there.
 
 ## Current status
 
-**Phases 1–10 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
+**Phases 1–11 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
 Air Cursor, Gesture Lab, 3D Studio, Air Draw, Presentation, Face
-Tracking, Pose Tracking** — complete. See IMPLEMENTATION.md §11 for the
-full phase plan.
+Tracking, Pose Tracking, Voice + Command Center** — complete. See
+IMPLEMENTATION.md §11 for the full phase plan.
 
 Working today: the app shell, routing, the design system, the camera
 lifecycle (start/stop/error handling, verified against the OS camera

@@ -24,6 +24,10 @@ export type CameraErrorReason =
 
 export type InputSourceKind = 'camera' | 'replay';
 
+export type VoiceState = 'off' | 'listening' | 'error';
+
+export type VoiceErrorReason = 'permission-denied' | 'no-microphone' | 'network' | 'unsupported' | 'unknown';
+
 /** The "reach box": a region of the (mirrored-normalized) camera frame
  *  that maps to the full screen. Without this, the screen's corners would
  *  sit at the edge of the camera frame, where hand tracking is least
@@ -79,6 +83,14 @@ export interface AppState {
   inputSource: InputSourceKind;
   settings: AppSettings;
   commandPaletteOpen: boolean;
+  voiceState: VoiceState;
+  voiceError: VoiceErrorReason | null;
+  /** The most recent speech-recognition transcript (MODEL output) and
+   *  which command, if any, it matched (HEURISTIC substring match via
+   *  `commandRouter.dispatchPhrase`) — surfaced in Settings so voice
+   *  control is never a silent black box. Not persisted. */
+  lastVoiceTranscript: string | null;
+  lastVoiceCommandTitle: string | null;
 }
 
 const SETTINGS_KEY = 'airos.settings.v1';
@@ -102,6 +114,10 @@ export const appStore = createStore<AppState>({
   inputSource: 'camera',
   settings: loadSettings(),
   commandPaletteOpen: false,
+  voiceState: 'off',
+  voiceError: null,
+  lastVoiceTranscript: null,
+  lastVoiceCommandTitle: null,
 });
 
 export function setActiveModule(moduleId: ModuleId): void {
@@ -120,6 +136,28 @@ export function toggleCommandPalette(open?: boolean): void {
   appStore.update({
     commandPaletteOpen: open ?? !appStore.get().commandPaletteOpen,
   });
+}
+
+/**
+ * Guards against a real re-entrancy hazard: `useVoiceCommands.ts`'s sync
+ * effect is itself an `appStore.subscribe` listener, and
+ * `VoiceRecognitionController` can call this synchronously from within
+ * that same call chain (e.g. reporting 'unsupported' the instant `start()`
+ * runs). `createStore.ts`'s `notify()` has no equality check, so writing
+ * unconditionally here would re-invoke every subscriber — including the
+ * one currently on the call stack — on every single call, recursing
+ * without bound. Skipping the write when nothing actually changed breaks
+ * that cycle at its root instead of relying on every caller to remember
+ * not to trigger it.
+ */
+export function setVoiceState(state: VoiceState, error: VoiceErrorReason | null = null): void {
+  const current = appStore.get();
+  if (current.voiceState === state && current.voiceError === error) return;
+  appStore.update({ voiceState: state, voiceError: error });
+}
+
+export function setLastVoiceResult(transcript: string, matchedCommandTitle: string | null): void {
+  appStore.update({ lastVoiceTranscript: transcript, lastVoiceCommandTitle: matchedCommandTitle });
 }
 
 export function updateSettings(patch: Partial<AppSettings>): void {

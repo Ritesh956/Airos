@@ -104,12 +104,15 @@ next, not just what broke.
 ## The Command Router: one funnel for every input
 
 `interaction/commands/CommandRouter.ts` is a tiny pub-sub registry.
-Anything that can trigger an action — a keyboard shortcut today, a gesture
-or a voice utterance in later phases — registers a `Command` (an id, a
+Anything that can trigger an action — a keyboard shortcut, a gesture, or
+(as of Phase 11) a spoken voice command — registers a `Command` (an id, a
 title, some matchable phrases, an optional key, and a `run()` function) and
 dispatches through the same two entry points: `dispatch(id)` for exact
 triggers (keyboard, gestures) and `dispatchPhrase(text)` for fuzzy triggers
-(voice, the text palette).
+(voice, the text palette). `interaction/voice/VoiceRecognitionController.ts`
+is the one new caller of `dispatchPhrase()` this phase added — every final
+transcript from the Web Speech API goes straight through it, so voice
+never gets its own parallel dispatch logic.
 
 The payoff: `modules/*` never hard-code `if (key === '2') navigate(...)`
 scattered around the app, and when Phase 11 adds voice input, it doesn't
@@ -242,7 +245,7 @@ that would make that possible), a Three.js scene in 3D Studio whose objects you 
 scale/rotate with real gestures (with full mouse and keyboard parity, per
 §1.6), a drawing canvas in Air Draw where pinch paints smoothed strokes, a
 fist erases, undo/redo/clear/color/brush-size all work, and drawings
-export as real PNGs or save to a local IndexedDB gallery, and a
+export as real PNGs or save to a local IndexedDB gallery, a
 Presentation module that drives a slide deck off swipes (next/previous),
 THUMBS_UP/FIST (timer start/pause), and OPEN_PALM (a gesture-legend
 toggle) — the first module needing no per-frame hand-position tracking at
@@ -251,7 +254,14 @@ publishes — and Gesture Lab's opt-in Pose Landmarker toggle drawing a
 33-point body skeleton plus four DERIVED elbow/knee joint-angle readouts
 (`vision/pose/poseAngles.ts`, reusing the same angle-between-three-points
 math the gesture engine uses for finger curl) — tracking plus one small,
-literal arithmetic step on top, per Phase 10's gate. The remaining module
+literal arithmetic step on top, per Phase 10's gate. Settings now also has
+a Voice control panel (Phase 11): a `VoiceRecognitionController` wraps the
+Web Speech API and dispatches recognized phrases through the same
+`CommandRouter.dispatchPhrase()` the text Command Palette always used, so
+"open 3d studio" spoken aloud runs the identical code path as clicking it
+in the palette or pressing its keyboard shortcut — with the browser's
+lack-of-support case rendering an explanatory message instead of a dead
+toggle. The remaining module
 (`Game Mode`) and `Analytics` are real,
 navigable routes that render `ui/ModulePlaceholder.tsx` — an honest "not
 built yet, here's what's planned and in which phase" screen, not a fake

@@ -1,13 +1,28 @@
+import { useMemo } from 'react';
 import { useStoreSelector } from '@/hooks/useStore';
 import { appStore, updateSettings } from '@/state/appStore';
 import { Panel } from '@/ui/Panel';
 import { Toggle } from '@/ui/Toggle';
 import { StatusPill } from '@/ui/StatusPill';
+import { Readout } from '@/ui/Readout';
 import { Button } from '@/ui/Button';
 import { useCamera } from '@/hooks/useCamera';
+import { checkBrowserSupport } from '@/utils/browserSupport';
+import { VOICE_ERROR_MESSAGES } from '@/interaction/voice/errors';
+
+const VOICE_STATUS_LABEL: Record<'off' | 'listening' | 'error', string> = {
+  off: 'Off',
+  listening: 'Listening',
+  error: 'Error',
+};
 
 export default function SettingsModule() {
   const settings = useStoreSelector(appStore, (s) => s.settings);
+  const voiceState = useStoreSelector(appStore, (s) => s.voiceState);
+  const voiceError = useStoreSelector(appStore, (s) => s.voiceError);
+  const lastVoiceTranscript = useStoreSelector(appStore, (s) => s.lastVoiceTranscript);
+  const lastVoiceCommandTitle = useStoreSelector(appStore, (s) => s.lastVoiceCommandTitle);
+  const voiceSupported = useMemo(() => checkBrowserSupport().speechRecognition, []);
   const { state, start, stop } = useCamera();
 
   return (
@@ -15,9 +30,9 @@ export default function SettingsModule() {
       <div>
         <h1 className="text-xl font-medium text-ink-0">Settings</h1>
         <p className="mt-1 text-sm text-ink-2">
-          Only settings that are actually wired up in this build are shown here. As later phases
-          add cursor smoothing, gesture stability tuning, and voice control, their settings will
-          appear in this panel — not before.
+          Only settings that are actually wired up in this build are shown here. Cursor smoothing
+          lives inside Air Cursor itself, next to the readouts it affects — this panel covers
+          cross-cutting, app-wide settings only.
         </p>
       </div>
 
@@ -48,6 +63,35 @@ export default function SettingsModule() {
         </div>
       </Panel>
 
+      <Panel eyebrow="Voice" title="Voice control">
+        {!voiceSupported ? (
+          <p className="text-sm leading-relaxed text-ink-2">{VOICE_ERROR_MESSAGES.unsupported}</p>
+        ) : (
+          <>
+            <Toggle
+              checked={settings.voiceEnabled}
+              onChange={(voiceEnabled) => updateSettings({ voiceEnabled })}
+              label="Voice control"
+              description="Say a command's name — 'open 3d studio', 'start camera' — to trigger it through the same Command Router keyboard and gestures use. Requires microphone access."
+            />
+            {settings.voiceEnabled && (
+              <div className="mt-3 border-t border-border pt-3">
+                <Readout label="Status" value={VOICE_STATUS_LABEL[voiceState]} method="DERIVED" />
+                {voiceState === 'error' && voiceError && (
+                  <p className="mt-1 text-xs text-danger-500">{VOICE_ERROR_MESSAGES[voiceError]}</p>
+                )}
+                <Readout label="Last heard" value={lastVoiceTranscript ?? '—'} method="MODEL" />
+                <Readout
+                  label="Matched command"
+                  value={lastVoiceCommandTitle ?? (lastVoiceTranscript ? 'No match' : '—')}
+                  method="HEURISTIC"
+                />
+              </div>
+            )}
+          </>
+        )}
+      </Panel>
+
       <Panel eyebrow="Accessibility" title="Motion">
         <Toggle
           checked={settings.reduceMotion}
@@ -59,7 +103,7 @@ export default function SettingsModule() {
 
       <Panel eyebrow="About" title="Build">
         <div className="space-y-1 text-sm text-ink-2">
-          <p>AIR OS — Phase 1: Architecture &amp; Camera.</p>
+          <p>AIR OS — Phases 1–11 complete (Architecture through Voice + Command Center).</p>
           <p className="text-ink-3">
             See IMPLEMENTATION.md in the project root for the full phase plan and architectural
             decisions.

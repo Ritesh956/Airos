@@ -23,7 +23,7 @@ split, why three stores, the Interaction Engine),
 code — each documents real thresholds and real bugs found while building, not
 just design intent.
 
-## Status: Phases 1–10 complete. Resume at Phase 11 (Voice + Command Center).
+## Status: Phases 1–11 complete. Resume at Phase 12 (Game Mode).
 
 | # | Phase | Status |
 |---|---|---|
@@ -37,8 +37,8 @@ just design intent.
 | 8 | Presentation | ✅ done |
 | 9 | Face tracking | ✅ done |
 | 10 | Pose tracking | ✅ done |
-| **11** | **Voice + Command Center** | **← start here** |
-| 12 | Game Mode | pending |
+| 11 | Voice + Command Center | ✅ done |
+| **12** | **Game Mode** | **← start here** |
 | 13 | Analytics + Perf | pending |
 | 14 | Polish | pending |
 
@@ -496,20 +496,129 @@ existing note, not a new lesson.
 `moduleRegistry.tsx` needed no changes — Pose tracking, like Face
 tracking, isn't a module route.
 
-## How to resume: Phase 11, Voice + Command Center
+## Phase 11 shipped: Voice + Command Center
 
-Check IMPLEMENTATION.md §11's phase table and §8 (`interaction/commands/
-CommandRouter.ts` already exists and is already the funnel keyboard
-commands go through — every module's `use*KeyboardCommands.ts` hook
-registers into it today). This phase's job is adding the other input
-modality the router was always designed for: the Web Speech API (voice),
-dispatched through `CommandRouter.dispatchPhrase()` per §8's "no
-component hard-codes a voice string, ever" rule. `appStore.commandPaletteOpen` and
-`AppSettings.voiceEnabled` already exist, and `app/shell/CommandPalette.tsx`
-is already a real, wired-up component (check what it currently does —
-likely keyboard/click dispatch only, with no voice input yet) rather than
-a placeholder to build from scratch. No open questions parked for this
-phase in IMPLEMENTATION.md §13.
+No new module route — voice is a fourth input modality dispatched through
+the CommandRouter every other modality (keyboard, gesture, the text
+palette) already used, exactly as IMPLEMENTATION.md §8 predicted it
+would be. `CommandRouter.ts` and `CommandPalette.tsx` were already real,
+wired-up Phase 1 scaffolding (not placeholders) — this phase's actual job
+was the piece that didn't exist yet: the Web Speech API wrapper and its
+UI surface. Composed from:
+- `types/speech-recognition.d.ts` — the project's first hand-written
+  `.d.ts` file. TypeScript's `lib.dom.d.ts` types the Web Speech API's
+  event/result payloads (`SpeechRecognitionEvent`,
+  `SpeechRecognitionErrorEvent`, `SpeechRecognitionResult`) but not the
+  `SpeechRecognition` interface or constructor itself — the API still
+  isn't a finished standard, which is also why Chrome/Edge only expose it
+  under the `webkitSpeechRecognition` vendor prefix. Declared here rather
+  than reached for `any`, per §12's "no `any` without a justifying
+  comment" bar.
+- `interaction/voice/VoiceRecognitionController.ts` — a plain class
+  owning the recognizer's lifecycle, the voice equivalent of
+  `CameraManager`. `continuous: true`, `interimResults: false` (only
+  acted-on, complete phrases — matching the "deterministic phrase
+  matching, not a partial-word guess" spirit of `dispatchPhrase`).
+  Restarts itself with a fresh instance on `onend` while still armed
+  (browsers end the recognizer after any pause, even in continuous mode),
+  swallows benign errors (`no-speech`, `aborted`) rather than surfacing
+  them, and permanently stops retrying on `permission-denied`/
+  `no-microphone` rather than looping forever against a failure the user
+  has to fix outside the app. **Every state transition is reported from
+  the recognizer's own async events (`onstart`/`onresult`/`onerror`/
+  `onend`) — never synchronously inside `start()`/`stop()`** — see the
+  next bullet for why that specific discipline matters here.
+- `interaction/voice/errors.ts` — `VOICE_ERROR_MESSAGES` +
+  `classifyVoiceError` + `isBenignVoiceError`, mirroring
+  `vision/camera/errors.ts`'s taxonomy pattern exactly (a fixed set of
+  actionable causes, each with a message that names the fix).
+- `state/appStore.ts` — `voiceState`/`voiceError`/`lastVoiceTranscript`/
+  `lastVoiceCommandTitle` added alongside the pre-existing
+  `AppSettings.voiceEnabled`. **`setVoiceState` carries an equality
+  guard** (skip the write if nothing actually changed) — see bug #12
+  below for why this isn't optional defensive style here, it's a real
+  fix for a hazard this phase's architecture introduced.
+- `hooks/useVoiceCommands.ts` — mounted once at `AppShell`, alongside
+  `useNavigationCommands`/`useGlobalKeyboardCommands` (voice isn't scoped
+  to one module, same reasoning). Subscribes directly to `appStore` and
+  calls the idempotent `controller.start()`/`.stop()` in step with
+  `settings.voiceEnabled` — the same "recompute on every appStore change,
+  let idempotency make repeats free" pattern `VisionEngine.recompute()`
+  and `CameraLandmarkSource.syncWithCameraState()` already use.
+  `commandRouter.dispatchPhrase()` gets every final transcript; the
+  matched command's title (or `null`) is recorded via `setLastVoiceResult`
+  so voice control is never a silent black box.
+- `modules/settings/SettingsModule.tsx` — a new "Voice control" panel:
+  the `voiceEnabled` toggle, and — while it's on — three Readouts with
+  real method tags (`Status`: DERIVED, `Last heard`: **MODEL** — it's raw
+  speech-to-text output, `Matched command`: **HEURISTIC** — it's
+  `dispatchPhrase`'s substring match), the same provenance discipline
+  §1.4 requires everywhere else. When `checkBrowserSupport().speechRecognition`
+  is false, the toggle doesn't render at all — just
+  `VOICE_ERROR_MESSAGES.unsupported`'s message and a pointer to the
+  Command Palette instead. This *is* Phase 11's "graceful degrade" gate,
+  literally.
+- `app/shell/StatusBar.tsx` — a small always-visible-once-enabled
+  `VoiceStatusPill` (mic icon + Off/Listening/Error), the voice
+  equivalent of the camera `StatusPill` already there, kept as a separate
+  local component rather than generalizing `StatusPill` itself — voice is
+  the only other stateful pill this app has, not enough call sites to
+  earn a generic abstraction.
+
+Two stale pieces of copy this phase's own addition made inaccurate were
+also fixed in passing: `SettingsModule.tsx`'s intro paragraph used to
+promise voice settings "as later phases add" them (now here, so reworded),
+and its About panel had said "Phase 1: Architecture & Camera" unchanged
+since the very first phase.
+
+`moduleRegistry.tsx` needed no changes — same as Phase 9/10, this isn't a
+module route.
+
+### A verification limit worth recording (not a code bug)
+
+Voice control's live end-to-end path (an actual spoken word triggering an
+actual command) couldn't be manually verified the way every other
+phase's feature was — granting microphone permission requires clicking a
+native, OS/browser-chrome-level "Allow" button that sits outside the
+page's DOM entirely, which no browser-automation tool used in this
+project (sandboxed preview pane or the real-Chrome surface alike) can
+reach. `navigator.permissions.query({name:'microphone'})` confirmed the
+permission genuinely sat at `'prompt'` throughout — the app correctly
+kept showing `Status: Off` rather than lying about `Listening` while
+nothing was actually listening yet, which is itself the honest behavior
+§12 requires. What *was* verified live in a real Chrome tab: the
+`voiceEnabled` toggle persisting correctly across reload, the Settings
+Readouts and StatusBar pill both reacting correctly to it, and — the
+part that actually proves the shared machinery voice depends on — the
+Command Palette dispatching `Open 3D Studio` and genuinely navigating,
+exercising the exact same `commandRouter.dispatchPhrase()`/`command.run()`
+path `VoiceRecognitionController`'s `onResult` callback calls. The
+recognizer's own event-driven state machine (listening, final-vs-interim
+filtering, benign-error swallowing, restart-on-end, permission-denied
+stop-retry, start() idempotency) is covered instead by seven
+`VoiceRecognitionController.test.ts` cases against a scripted fake
+`SpeechRecognition`, specifically because the live mic path can't be
+automated here. Flagged plainly rather than claimed as something it
+wasn't, per this file's own quality bar on fabricated confidence.
+
+## How to resume: Phase 12, Game Mode
+
+Check IMPLEMENTATION.md §11's phase table (`Gesture-controlled game` /
+"Playable end-to-end by hand alone") and the repo layout's `modules/game/`
+entry (§2) — `moduleRegistry.tsx`'s `game` entry currently renders
+`ui/ModulePlaceholder.tsx`, the last real placeholder besides Analytics.
+Unlike Phases 9–11, this phase *is* a new module with real gameplay logic,
+not another capability bolted onto an existing pipeline — closer in shape
+to Air Draw or 3D Studio (Phase 6/7's own Interaction Engine + module
+split) than to Face/Pose/Voice's "no new route" pattern. Reuse checklist:
+the gesture engine, `interaction/commands/CommandRouter.ts` for keyboard
+parity (§1.6 still applies — a game needs to be playable by keyboard too,
+not gesture-only), and `vision/replay/fixtures.ts`'s synthetic hand for a
+Demo-Mode-playable version, same as every gesture-driven module before it.
+No open questions parked for this phase in IMPLEMENTATION.md §13 — the
+brief just says "gesture-controlled game," so the specific game concept
+is this phase's first real design decision, not something already decided
+upstream.
 ## Architecture quick-reference (see docs/ARCHITECTURE.md for full detail)
 
 - **Three state stores**: `appStore` (module/camera/settings, user-driven),
@@ -551,7 +660,7 @@ phase in IMPLEMENTATION.md §13.
 ```bash
 npm run typecheck   # tsc -b across all 3 workspaces
 npm run lint        # eslint, includes the boundaries rule
-npm run test:run    # vitest run — 162 tests as of end of Phase 10
+npm run test:run    # vitest run — 183 tests as of end of Phase 11
 npm run build       # tsc + vite build, all 3 workspaces
 ```
 Run all four before considering any phase done. `npm run dev` (or the
@@ -718,6 +827,41 @@ if you don't know to watch for it.
     than it should have, check for this before assuming the code under
     test is wrong.
 
+12. **A self-write re-entrancy hazard, caught before shipping, not live**
+    (Phase 11). `useVoiceCommands.ts`'s sync effect is itself an
+    `appStore.subscribe` listener, and `VoiceRecognitionController.start()`
+    can call back into `setVoiceState` — which writes to `appStore` —
+    synchronously from within that same call chain (e.g. reporting
+    `'unsupported'` the instant `start()` runs, before any real async
+    browser event has fired). `state/createStore.ts`'s `notify()` has no
+    equality check and iterates listeners with a plain `for...of`: a
+    listener that writes back into the same store it's subscribed to,
+    unconditionally, recurses into `notify()` again on the same call
+    stack, which invokes every listener again — including itself —
+    without any base case to stop it. Every earlier phase's
+    `appStore.subscribe` consumers (`VisionEngine.recompute()`,
+    `CameraLandmarkSource.syncWithCameraState()`) happened to avoid this
+    by construction, since none of them ever wrote back into `appStore`
+    itself — only into `visionStore`/`interactionStore`, or by calling
+    inherently-async browser APIs. Voice is the first consumer that both
+    subscribes to `appStore` *and* needs to write back into it. Fixed two
+    ways at once, deliberately redundant: `setVoiceState` skips the write
+    entirely when the new state matches the current one (breaks the
+    recursion at its root, protects every call site including future
+    ones), and `VoiceRecognitionController` was also designed so no state
+    transition is *ever* reported synchronously inside `start()`/`stop()`
+    — only from the recognizer's genuine async events. Caught via
+    reasoning through `createStore.ts`'s actual `notify()` implementation
+    before writing the hook, not found by hitting a real infinite loop in
+    the browser — an `appStore.test.ts` regression test (`setVoiceState`'s
+    "prevents unbounded re-entrant notification" case) pins the fix.
+    **Lesson**: any new `appStore.subscribe` consumer that might need to
+    write back into `appStore` itself must either guard the write with an
+    equality check or route the write through a genuinely async callback
+    — never assume, the way every prior consumer safely could, that
+    "nothing writes back into the store it's subscribed to" just because
+    that's held true so far.
+
 ## Process notes for whoever (whatever) continues this
 
 - Follow the phase gate literally: typecheck, lint, test, build, *then*
@@ -756,6 +900,20 @@ if you don't know to watch for it.
      the *terminal*, not the browser — sidesteps this category of
      confusion entirely (this is how bug #10 above was actually diagnosed,
      after several dead-end attempts at in-browser introspection).
+- Microphone (and, if a future phase ever needs it, any other
+  permission-gated hardware) can't be granted through browser-automation
+  tooling the way clicking a page button can — the native "Allow"
+  prompt lives in browser chrome, outside the DOM, unreachable by both
+  the sandboxed preview pane and the real-Chrome automation surface
+  (Phase 11). `navigator.permissions.query({name: '<permission>'})` is
+  the reliable way to confirm *why* a feature looks inert (`'prompt'`
+  means it's genuinely waiting on a human, not broken) rather than
+  guessing from symptoms alone. When live end-to-end verification is
+  blocked this way, lean harder on a scripted-fake unit test for the
+  state machine (see `VoiceRecognitionController.test.ts`) and verify
+  everything live that *doesn't* require the gated permission — the
+  settings UI, persistence, and the shared dispatch path the feature
+  ultimately calls into.
 - When adding a synthetic/demo fixture for a new module (Presentation and
   Game Mode will still want one; Air Draw's is optional), write a test
   asserting the fixture actually produces the behavior it's meant to
@@ -770,7 +928,7 @@ if you don't know to watch for it.
   cheap thing to try before assuming your code is wrong.
 - `IMPLEMENTATION.md` and `README.md` both have a status line near the
   top that should be updated at the end of each phase (both correctly say
-  "Phases 1–10 complete" as of this phase — they drifted out of sync for
+  "Phases 1–11 complete" as of this phase — they drifted out of sync for
   several phases in a row before being caught and corrected here). Keep
   them in sync — they're the first thing a reader (or a future session)
   checks.
