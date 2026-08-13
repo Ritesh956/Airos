@@ -6,13 +6,13 @@ import { GestureEngine } from '@/gestures/engine';
 import type { GestureKind } from '@/gestures/types';
 
 describe('generateGestureShowcaseFixture', () => {
-  it('produces a non-trivial, evenly-paced sequence', () => {
-    const frames = generateGestureShowcaseFixture({ fps: 30 });
+  it('produces a non-trivial, evenly-paced sequence', async () => {
+    const frames = await generateGestureShowcaseFixture({ fps: 30 });
     expect(frames.length).toBeGreaterThan(60);
   });
 
-  it('every frame has exactly one hand with 21 well-formed landmarks', () => {
-    const frames = generateGestureShowcaseFixture({ fps: 30 });
+  it('every frame has exactly one hand with 21 well-formed landmarks', async () => {
+    const frames = await generateGestureShowcaseFixture({ fps: 30 });
     for (const frame of frames) {
       expect(frame.hands).toHaveLength(1);
       const hand = frame.hands[0]!;
@@ -26,8 +26,8 @@ describe('generateGestureShowcaseFixture', () => {
     }
   });
 
-  it('marks every frame as replay-sourced, with synthetic face and pose data', () => {
-    const frames = generateGestureShowcaseFixture({ fps: 30 });
+  it('marks every frame as replay-sourced, with synthetic face and pose data', async () => {
+    const frames = await generateGestureShowcaseFixture({ fps: 30 });
     for (const frame of frames) {
       expect(frame.source).toBe('replay');
       expect(frame.face).not.toBeNull();
@@ -37,8 +37,8 @@ describe('generateGestureShowcaseFixture', () => {
     }
   });
 
-  it('timestamps are strictly increasing', () => {
-    const frames = generateGestureShowcaseFixture({ fps: 30 });
+  it('timestamps are strictly increasing', async () => {
+    const frames = await generateGestureShowcaseFixture({ fps: 30 });
     for (let i = 1; i < frames.length; i++) {
       expect(frames[i]!.timestamp).toBeGreaterThan(frames[i - 1]!.timestamp);
     }
@@ -51,8 +51,8 @@ describe('generateGestureShowcaseFixture', () => {
   // PINCH, or a swipe. Demo Mode is the first thing a camera-less visitor
   // sees, so "the fixture looks like a hand" isn't enough; it has to
   // actually exercise the gesture engine the way a real hand would.
-  it('actually classifies as every static gesture at some point in the loop', () => {
-    const frames = generateGestureShowcaseFixture({ fps: 30 });
+  it('actually classifies as every static gesture at some point in the loop', async () => {
+    const frames = await generateGestureShowcaseFixture({ fps: 30 });
     const seen = new Set(frames.map((f) => classifyStaticPose(f.hands[0]!.landmarks).gesture));
 
     const expectedGestures: GestureKind[] = ['OPEN_PALM', 'FIST', 'POINT', 'PEACE', 'THUMBS_UP'];
@@ -61,14 +61,14 @@ describe('generateGestureShowcaseFixture', () => {
     }
   });
 
-  it('drops below the pinch-entry threshold at some point', () => {
-    const frames = generateGestureShowcaseFixture({ fps: 30 });
+  it('drops below the pinch-entry threshold at some point', async () => {
+    const frames = await generateGestureShowcaseFixture({ fps: 30 });
     const minDistance = Math.min(...frames.map((f) => pinchDistance(f.hands[0]!.landmarks)));
     expect(minDistance).toBeLessThan(0.28);
   });
 
-  it('produces at least one leftward and one rightward swipe', () => {
-    const frames = generateGestureShowcaseFixture({ fps: 30 });
+  it('produces at least one leftward and one rightward swipe', async () => {
+    const frames = await generateGestureShowcaseFixture({ fps: 30 });
     const detector = new SwipeDetector();
     const results = frames.map((f) => detector.update(f.hands[0]!.landmarks, f.timestamp));
 
@@ -76,13 +76,13 @@ describe('generateGestureShowcaseFixture', () => {
     expect(results).toContain('SWIPE_RIGHT');
   });
 
-  it('every showcased gesture survives the full GestureEngine, stability window included', () => {
+  it('every showcased gesture survives the full GestureEngine, stability window included', async () => {
     // The unit-level checks above call the pure classifiers directly; this
     // drives the actual stateful engine (hysteresis, 3-frame debounce)
     // across the whole sequence, the same way the real pipeline would —
     // proving each pose is held long enough to actually be *reported*, not
     // just technically classifiable for a single frame.
-    const frames = generateGestureShowcaseFixture({ fps: 30 });
+    const frames = await generateGestureShowcaseFixture({ fps: 30 });
     const engine = new GestureEngine();
     const reported = new Set(
       frames.map((f) => engine.update(f.hands[0]!, f.timestamp).gesture),

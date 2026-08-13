@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { FaceLandmarker } from '@mediapipe/tasks-vision';
 import { visionEngine } from '@/vision/engine/VisionEngine';
 import type { VisionFrame } from '@/vision/types';
 import { mirrorLandmark } from '@/utils/coords';
@@ -17,18 +16,39 @@ const OVAL_COLOR = '#5b6478';
 const EYE_COLOR = '#5eead4';
 const LIPS_COLOR = '#fbbf24'; // --color-warning-500
 
-const CONNECTION_GROUPS: { connections: { start: number; end: number }[]; color: string }[] = [
-  { connections: FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, color: OVAL_COLOR },
-  { connections: FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, color: EYE_COLOR },
-  { connections: FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, color: EYE_COLOR },
-  { connections: FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, color: EYE_COLOR },
-  { connections: FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, color: EYE_COLOR },
-  { connections: FaceLandmarker.FACE_LANDMARKS_LIPS, color: LIPS_COLOR },
-];
+type Connection = { start: number; end: number };
+type ConnectionGroup = { connections: readonly Connection[]; color: string };
 
-function draw(ctx: CanvasRenderingContext2D, width: number, height: number, frame: VisionFrame, show: boolean): void {
+// Same reasoning as HandSkeletonOverlay.tsx's getHandConnections(): these
+// are static index-pair arrays baked into @mediapipe/tasks-vision's JS
+// wrapper, and this overlay is reachable from Gesture Lab regardless of
+// whether face tracking is on — fetched lazily so the package isn't pulled
+// into the eagerly-loaded bundle just for these constants.
+let connectionGroupsPromise: Promise<ConnectionGroup[]> | null = null;
+function getConnectionGroups(): Promise<ConnectionGroup[]> {
+  if (!connectionGroupsPromise) {
+    connectionGroupsPromise = import('@mediapipe/tasks-vision').then((m) => [
+      { connections: m.FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, color: OVAL_COLOR },
+      { connections: m.FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, color: EYE_COLOR },
+      { connections: m.FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, color: EYE_COLOR },
+      { connections: m.FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, color: EYE_COLOR },
+      { connections: m.FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, color: EYE_COLOR },
+      { connections: m.FaceLandmarker.FACE_LANDMARKS_LIPS, color: LIPS_COLOR },
+    ]);
+  }
+  return connectionGroupsPromise;
+}
+
+function draw(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  frame: VisionFrame,
+  show: boolean,
+  groups: ConnectionGroup[] | null,
+): void {
   ctx.clearRect(0, 0, width, height);
-  if (!show || !frame.face) return;
+  if (!show || !frame.face || !groups) return;
 
   const points = frame.face.landmarks.map((l) => {
     const mirrored = mirrorLandmark(l);
@@ -36,7 +56,7 @@ function draw(ctx: CanvasRenderingContext2D, width: number, height: number, fram
   });
 
   ctx.lineWidth = Math.max(1, width * 0.0018);
-  for (const group of CONNECTION_GROUPS) {
+  for (const group of groups) {
     ctx.strokeStyle = group.color;
     ctx.beginPath();
     for (const connection of group.connections) {
@@ -66,6 +86,7 @@ export function FaceMeshOverlay({ className }: { className?: string }) {
   const showFaceMesh = useStoreSelector(appStore, (s) => s.settings.showFaceMesh);
   const trackingState = useStoreSelector(interactionStore, (s) => s.trackingState);
   const showRef = useRef(showFaceMesh);
+  const groupsRef = useRef<ConnectionGroup[] | null>(null);
   showRef.current = showFaceMesh;
 
   useEffect(() => {
@@ -84,8 +105,12 @@ export function FaceMeshOverlay({ className }: { className?: string }) {
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(canvas);
 
+    void getConnectionGroups().then((groups) => {
+      groupsRef.current = groups;
+    });
+
     const unsubscribe = visionEngine.subscribe((frame) => {
-      draw(ctx, canvas.width, canvas.height, frame, showRef.current);
+      draw(ctx, canvas.width, canvas.height, frame, showRef.current, groupsRef.current);
     });
 
     return () => {

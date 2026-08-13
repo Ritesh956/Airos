@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { generateSyntheticFace, walkConnectionsIntoLoops } from './faceMesh';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { generateSyntheticFace, preloadFaceMeshTopology, walkConnectionsIntoLoops } from './faceMesh';
 
 describe('walkConnectionsIntoLoops', () => {
   it('walks a simple closed loop into one ordered cycle', () => {
@@ -56,6 +56,13 @@ describe('walkConnectionsIntoLoops', () => {
 });
 
 describe('generateSyntheticFace', () => {
+  // generateSyntheticFace() requires the real @mediapipe/tasks-vision
+  // connection topology to already be cached — see preloadFaceMeshTopology's
+  // doc comment for why that's a dynamic import rather than a static one.
+  beforeAll(async () => {
+    await preloadFaceMeshTopology();
+  });
+
   it('produces a well-formed, in-bounds landmark array', () => {
     const face = generateSyntheticFace(0);
 

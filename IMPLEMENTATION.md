@@ -504,10 +504,14 @@ Parked until the relevant phase; recorded so they don't get silently decided.
    on the main thread during initial page load — a one-time cold-start cost,
    not the sustained per-frame inference cost this question is actually about,
    but real evidence that MediaPipe's WASM work is expensive enough on the main
-   thread to matter for *something*. That audit's fix (deferring the preload to
-   an idle callback) addressed the cold-start collision with first paint; it
-   says nothing about whether a Worker is warranted for steady-state inference.
-   `VisionEngine` is deliberately an async, message-shaped interface so this
+   thread to matter for *something*. That audit's fix (deferring the preload,
+   then gating it on real user interaction — see CLAUDE.md bugs #16/#17)
+   fully closed Lighthouse's Performance score to 91, meeting the §11 gate,
+   *without* a Web Worker — meaning Lighthouse passing is no longer a signal
+   either way on whether one's warranted; it says nothing about steady-state
+   inference cost while a camera is actively running, which remains the
+   real open question below. `VisionEngine` is deliberately an async,
+   message-shaped interface so this
    becomes a swap, not a rewrite, whenever the real-camera-load question above
    is actually answered.
 2. **Model hosting** — vendored into `public/models/` for offline use and CDN

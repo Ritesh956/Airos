@@ -13,21 +13,43 @@ import { generateGestureShowcaseFixture } from './fixtures';
 export class ReplaySource implements LandmarkSource {
   readonly kind = 'replay' as const;
 
-  private frames: VisionFrame[];
-  private loopDurationMs: number;
+  /** null until either an explicit fixture is passed in (tests) or the
+   *  default is lazily generated on first start() — see start()'s comment. */
+  private frames: VisionFrame[] | null;
+  /** Caches the in-flight generation promise so two overlapping start()
+   *  calls (e.g. a rapid double-toggle) await the same build instead of
+   *  generating the fixture twice. */
+  private framesPromise: Promise<VisionFrame[]> | null = null;
+  private loopDurationMs = 0;
   private tasks: VisionTaskRequest;
   private listeners = new Set<(frame: VisionFrame) => void>();
   private rafId: number | null = null;
   private startedAt = 0;
 
-  constructor(frames: VisionFrame[] = generateGestureShowcaseFixture()) {
-    this.frames = frames;
-    this.loopDurationMs = frames.length > 0 ? (frames[frames.length - 1]?.timestamp ?? 0) : 0;
+  constructor(frames?: VisionFrame[]) {
+    this.frames = frames ?? null;
+    if (frames) this.loopDurationMs = frames.length > 0 ? (frames[frames.length - 1]?.timestamp ?? 0) : 0;
     this.tasks = { hand: false, face: false, pose: false };
   }
 
   async start(tasks: VisionTaskRequest): Promise<void> {
     this.tasks = tasks;
+    if (this.frames === null) {
+      // Deferred from construction time: VisionEngine's singleton
+      // constructs one ReplaySource unconditionally (it must exist before
+      // anyone knows whether Demo Mode will ever be toggled on), so
+      // building the default fixture eagerly there meant every single page
+      // load paid the CPU cost of generating the full synthetic gesture
+      // sequence (including the face/pose mesh construction it pulls in —
+      // see fixtures.ts) even for visitors who only ever use the real
+      // camera. Lighthouse's "Minimize main-thread work" audit against a
+      // real production build is what caught this — see CLAUDE.md's
+      // "Post-Phase-14" note. Generating it here means it's only ever built
+      // the first time Demo Mode (or a test) actually starts this source.
+      if (!this.framesPromise) this.framesPromise = generateGestureShowcaseFixture();
+      this.frames = await this.framesPromise;
+      this.loopDurationMs = this.frames.length > 0 ? (this.frames[this.frames.length - 1]?.timestamp ?? 0) : 0;
+    }
     if (this.rafId !== null) return;
     this.startedAt = performance.now();
     this.scheduleNext();
@@ -60,7 +82,7 @@ export class ReplaySource implements LandmarkSource {
   }
 
   private tick(): void {
-    if (this.frames.length === 0 || this.loopDurationMs === 0) {
+    if (!this.frames || this.frames.length === 0 || this.loopDurationMs === 0) {
       this.scheduleNext();
       return;
     }

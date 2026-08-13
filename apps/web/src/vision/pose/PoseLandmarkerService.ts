@@ -1,4 +1,4 @@
-import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
+import type { PoseLandmarker } from '@mediapipe/tasks-vision';
 import type { PoseObservation, Landmark } from '@/vision/types';
 
 const WASM_BASE_PATH = '/models/wasm';
@@ -20,10 +20,14 @@ let landmarkerPromise: Promise<PoseLandmarker> | null = null;
  * optionally face) detection, and IMPLEMENTATION.md §9's performance budget
  * has no headroom to spend on pose accuracy beyond what's needed for the
  * joint angles this phase actually displays.
+ *
+ * `@mediapipe/tasks-vision` is dynamically imported here — same reasoning
+ * as `HandLandmarkerService.ts`'s identical change.
  */
 function getPoseLandmarker(): Promise<PoseLandmarker> {
   if (!landmarkerPromise) {
     landmarkerPromise = (async () => {
+      const { FilesetResolver, PoseLandmarker } = await import('@mediapipe/tasks-vision');
       const fileset = await FilesetResolver.forVisionTasks(WASM_BASE_PATH);
       return PoseLandmarker.createFromOptions(fileset, {
         baseOptions: {

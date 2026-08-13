@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { HandLandmarker } from '@mediapipe/tasks-vision';
 import { visionEngine } from '@/vision/engine/VisionEngine';
 import type { VisionFrame } from '@/vision/types';
 import { mirrorLandmark } from '@/utils/coords';
@@ -15,6 +14,24 @@ import { cn } from '@/utils/cn';
 const SKELETON_COLOR = '#5eead4';
 const JOINT_COLOR = '#f4f6fb';
 
+type Connection = { start: number; end: number };
+
+// HAND_CONNECTIONS is just a static array of landmark index pairs — no
+// model, no WASM — but it lives inside @mediapipe/tasks-vision's JS
+// wrapper, and this overlay is always mounted on Home (inside CameraStage)
+// regardless of whether any task is acquired yet. A static import here
+// would pull the whole package into the eagerly-loaded bundle just for
+// this one constant. Fetched once, lazily, and cached module-wide — every
+// overlay instance shares the same promise. See CLAUDE.md's
+// "Post-Phase-14" note.
+let handConnectionsPromise: Promise<readonly Connection[]> | null = null;
+function getHandConnections(): Promise<readonly Connection[]> {
+  if (!handConnectionsPromise) {
+    handConnectionsPromise = import('@mediapipe/tasks-vision').then((m) => m.HandLandmarker.HAND_CONNECTIONS);
+  }
+  return handConnectionsPromise;
+}
+
 function draw(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -22,6 +39,7 @@ function draw(
   frame: VisionFrame,
   showSkeleton: boolean,
   showLandmarkIndices: boolean,
+  connections: readonly Connection[] | null,
 ): void {
   ctx.clearRect(0, 0, width, height);
   if (!showSkeleton || frame.hands.length === 0) return;
@@ -32,17 +50,22 @@ function draw(
       return { x: mirrored.x * width, y: mirrored.y * height };
     });
 
-    ctx.strokeStyle = SKELETON_COLOR;
-    ctx.lineWidth = Math.max(1.5, width * 0.0025);
-    ctx.beginPath();
-    for (const connection of HandLandmarker.HAND_CONNECTIONS) {
-      const start = points[connection.start];
-      const end = points[connection.end];
-      if (!start || !end) continue;
-      ctx.moveTo(start.x, start.y);
-      ctx.lineTo(end.x, end.y);
+    // connections is null for the first frame or two after mount, until
+    // the lazy import above resolves — joints (drawn below) still render
+    // immediately, just without the connecting lines for that brief window.
+    if (connections) {
+      ctx.strokeStyle = SKELETON_COLOR;
+      ctx.lineWidth = Math.max(1.5, width * 0.0025);
+      ctx.beginPath();
+      for (const connection of connections) {
+        const start = points[connection.start];
+        const end = points[connection.end];
+        if (!start || !end) continue;
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
 
     const jointRadius = Math.max(2, width * 0.004);
     ctx.fillStyle = JOINT_COLOR;
@@ -86,6 +109,7 @@ export function HandSkeletonOverlay({ className }: { className?: string }) {
   const trackingState = useStoreSelector(interactionStore, (s) => s.trackingState);
   const showSkeletonRef = useRef(showSkeleton);
   const showDebugOverlayRef = useRef(showDebugOverlay);
+  const connectionsRef = useRef<readonly Connection[] | null>(null);
   showSkeletonRef.current = showSkeleton;
   showDebugOverlayRef.current = showDebugOverlay;
 
@@ -105,8 +129,20 @@ export function HandSkeletonOverlay({ className }: { className?: string }) {
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(canvas);
 
+    void getHandConnections().then((connections) => {
+      connectionsRef.current = connections;
+    });
+
     const unsubscribe = visionEngine.subscribe((frame) => {
-      draw(ctx, canvas.width, canvas.height, frame, showSkeletonRef.current, showDebugOverlayRef.current);
+      draw(
+        ctx,
+        canvas.width,
+        canvas.height,
+        frame,
+        showSkeletonRef.current,
+        showDebugOverlayRef.current,
+        connectionsRef.current,
+      );
     });
 
     return () => {

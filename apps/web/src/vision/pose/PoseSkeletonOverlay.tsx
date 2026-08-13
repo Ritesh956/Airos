@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { PoseLandmarker } from '@mediapipe/tasks-vision';
 import { visionEngine } from '@/vision/engine/VisionEngine';
 import type { VisionFrame } from '@/vision/types';
 import { mirrorLandmark } from '@/utils/coords';
@@ -15,7 +14,28 @@ import { cn } from '@/utils/cn';
 const SKELETON_COLOR = '#c084fc'; // --color-accent-violet-400-ish
 const JOINT_COLOR = '#f4f6fb';
 
-function draw(ctx: CanvasRenderingContext2D, width: number, height: number, frame: VisionFrame, show: boolean): void {
+type Connection = { start: number; end: number };
+
+// Same reasoning as HandSkeletonOverlay.tsx's getHandConnections() — a
+// static index-pair array baked into @mediapipe/tasks-vision's JS wrapper,
+// fetched lazily so the package isn't pulled into the eagerly-loaded
+// bundle just for this constant.
+let poseConnectionsPromise: Promise<readonly Connection[]> | null = null;
+function getPoseConnections(): Promise<readonly Connection[]> {
+  if (!poseConnectionsPromise) {
+    poseConnectionsPromise = import('@mediapipe/tasks-vision').then((m) => m.PoseLandmarker.POSE_CONNECTIONS);
+  }
+  return poseConnectionsPromise;
+}
+
+function draw(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  frame: VisionFrame,
+  show: boolean,
+  connections: readonly Connection[] | null,
+): void {
   ctx.clearRect(0, 0, width, height);
   if (!show || !frame.pose) return;
 
@@ -24,17 +44,19 @@ function draw(ctx: CanvasRenderingContext2D, width: number, height: number, fram
     return { x: mirrored.x * width, y: mirrored.y * height };
   });
 
-  ctx.strokeStyle = SKELETON_COLOR;
-  ctx.lineWidth = Math.max(1.5, width * 0.0025);
-  ctx.beginPath();
-  for (const connection of PoseLandmarker.POSE_CONNECTIONS) {
-    const start = points[connection.start];
-    const end = points[connection.end];
-    if (!start || !end) continue;
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
+  if (connections) {
+    ctx.strokeStyle = SKELETON_COLOR;
+    ctx.lineWidth = Math.max(1.5, width * 0.0025);
+    ctx.beginPath();
+    for (const connection of connections) {
+      const start = points[connection.start];
+      const end = points[connection.end];
+      if (!start || !end) continue;
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+    }
+    ctx.stroke();
   }
-  ctx.stroke();
 
   const jointRadius = Math.max(2, width * 0.004);
   ctx.fillStyle = JOINT_COLOR;
@@ -60,6 +82,7 @@ export function PoseSkeletonOverlay({ className }: { className?: string }) {
   const showPoseSkeleton = useStoreSelector(appStore, (s) => s.settings.showPoseSkeleton);
   const trackingState = useStoreSelector(interactionStore, (s) => s.trackingState);
   const showRef = useRef(showPoseSkeleton);
+  const connectionsRef = useRef<readonly Connection[] | null>(null);
   showRef.current = showPoseSkeleton;
 
   useEffect(() => {
@@ -78,8 +101,12 @@ export function PoseSkeletonOverlay({ className }: { className?: string }) {
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(canvas);
 
+    void getPoseConnections().then((connections) => {
+      connectionsRef.current = connections;
+    });
+
     const unsubscribe = visionEngine.subscribe((frame) => {
-      draw(ctx, canvas.width, canvas.height, frame, showRef.current);
+      draw(ctx, canvas.width, canvas.height, frame, showRef.current, connectionsRef.current);
     });
 
     return () => {

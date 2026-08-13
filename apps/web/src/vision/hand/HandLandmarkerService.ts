@@ -1,4 +1,4 @@
-import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+import type { HandLandmarker } from '@mediapipe/tasks-vision';
 import type { HandObservation, Landmark } from '@/vision/types';
 
 const WASM_BASE_PATH = '/models/wasm';
@@ -12,10 +12,18 @@ let landmarkerPromise: Promise<HandLandmarker> | null = null;
  * benefit — every module that wants hands shares this one). Assets are
  * loaded from public/models/, vendored by scripts/fetch-models.mjs, not
  * from a third-party CDN — see docs/COMPUTER_VISION.md.
+ *
+ * `@mediapipe/tasks-vision` itself is dynamically imported here rather than
+ * at module scope: this file is reachable from every route that acquires
+ * the hand task, including Home on first paint, so a static import would
+ * bundle the whole package's JS wrapper into the eagerly-loaded chunk
+ * regardless of whether this function ever runs. See CLAUDE.md's
+ * "Post-Phase-14" note.
  */
 function getHandLandmarker(): Promise<HandLandmarker> {
   if (!landmarkerPromise) {
     landmarkerPromise = (async () => {
+      const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
       const fileset = await FilesetResolver.forVisionTasks(WASM_BASE_PATH);
       return HandLandmarker.createFromOptions(fileset, {
         baseOptions: {

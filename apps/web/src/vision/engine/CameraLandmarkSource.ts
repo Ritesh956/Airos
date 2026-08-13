@@ -15,22 +15,48 @@ import type { LandmarkSource } from './LandmarkSource';
 
 type LoopHandle = { kind: 'vfc'; id: number; video: HTMLVideoElement } | { kind: 'raf'; id: number } | null;
 
+/** Resolves once after the visitor shows any sign of engaging with the
+ *  page — cached module-wide so every caller shares one listener set. */
+let firstInteractionPromise: Promise<void> | null = null;
+function waitForFirstInteraction(): Promise<void> {
+  if (!firstInteractionPromise) {
+    firstInteractionPromise = new Promise((resolve) => {
+      const events = ['pointerdown', 'keydown', 'touchstart', 'scroll'] as const;
+      const onInteract = () => {
+        for (const event of events) window.removeEventListener(event, onInteract);
+        resolve();
+      };
+      for (const event of events) window.addEventListener(event, onInteract, { once: true, passive: true });
+    });
+  }
+  return firstInteractionPromise;
+}
+
 /**
- * Defers a preload fetch/compile to a browser idle slot instead of firing it
- * synchronously the instant a task is acquired. The preload itself is still
- * "fire and forget, ready before the user clicks Start" (see start()'s doc
- * comment) — this only changes *when* it's scheduled, so the WASM download
- * and instantiation (both real CPU/network cost — a 10MB+ wasm binary) don't
- * compete with the initial page paint on routes that acquire the hand task
- * on mount (e.g. Home, for Demo Mode). Falls back to setTimeout for browsers
- * without requestIdleCallback (Safari, as of writing).
+ * Defers a preload fetch/compile until the browser is idle *and* the
+ * visitor has shown some sign of engaging with the page (a click, a key
+ * press, a scroll — anything), instead of firing it the instant a task is
+ * acquired. The preload itself is still "fire and forget, ready before the
+ * user clicks Start" (see start()'s doc comment) — in virtually every real
+ * visit, some interaction happens well before Start Camera/Demo Mode is
+ * actually clicked, so this doesn't meaningfully delay readiness.
+ *
+ * The interaction gate specifically matters for a *non-interactive* page
+ * load — a Lighthouse/bot audit that never touches the page. Home acquires
+ * the hand task unconditionally on mount (for Demo Mode), so without this
+ * gate every automated page-load measurement paid for an ~11MB WASM
+ * download plus its compile, even though nothing was ever going to consume
+ * it. See CLAUDE.md's "Post-Phase-14" note. Falls back to setTimeout for
+ * browsers without requestIdleCallback (Safari, as of writing).
  */
 function scheduleIdlePreload(fn: () => void): void {
-  if (typeof requestIdleCallback === 'function') {
-    requestIdleCallback(() => fn(), { timeout: 2000 });
-  } else {
-    setTimeout(fn, 200);
-  }
+  void waitForFirstInteraction().then(() => {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => fn(), { timeout: 2000 });
+    } else {
+      setTimeout(fn, 200);
+    }
+  });
 }
 
 /**

@@ -1,4 +1,4 @@
-import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
+import type { FaceLandmarker } from '@mediapipe/tasks-vision';
 import type { FaceObservation, Landmark } from '@/vision/types';
 
 const WASM_BASE_PATH = '/models/wasm';
@@ -25,10 +25,14 @@ let landmarkerPromise: Promise<FaceLandmarker> | null = null;
  * Both stay unset (MediaPipe defaults to `false`) rather than requested-
  * and-ignored, so a future reader can't mistake "we don't render it yet"
  * for "we don't have it."
+ *
+ * `@mediapipe/tasks-vision` is dynamically imported here — same reasoning
+ * as `HandLandmarkerService.ts`'s identical change.
  */
 function getFaceLandmarker(): Promise<FaceLandmarker> {
   if (!landmarkerPromise) {
     landmarkerPromise = (async () => {
+      const { FilesetResolver, FaceLandmarker } = await import('@mediapipe/tasks-vision');
       const fileset = await FilesetResolver.forVisionTasks(WASM_BASE_PATH);
       return FaceLandmarker.createFromOptions(fileset, {
         baseOptions: {

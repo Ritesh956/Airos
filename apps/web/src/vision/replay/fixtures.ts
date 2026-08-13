@@ -1,5 +1,5 @@
 import type { HandObservation, Landmark, VisionFrame } from '@/vision/types';
-import { generateSyntheticFace } from './faceMesh';
+import { generateSyntheticFace, preloadFaceMeshTopology } from './faceMesh';
 import { generateSyntheticPose } from './poseSkeleton';
 
 /**
@@ -210,8 +210,13 @@ export interface SyntheticFixtureOptions {
  * plus a swipe, holding each pose long enough for the stability window
  * (GestureEngine's 3-frame debounce) to actually confirm it — see the
  * module doc comment for why this exists instead of a generic wiggle.
+ *
+ * Async because it awaits `preloadFaceMeshTopology()` once up front — see
+ * that function's doc comment for why the mediapipe import behind it is
+ * dynamic rather than a static top-level import.
  */
-export function generateGestureShowcaseFixture(options: SyntheticFixtureOptions = {}): VisionFrame[] {
+export async function generateGestureShowcaseFixture(options: SyntheticFixtureOptions = {}): Promise<VisionFrame[]> {
+  await preloadFaceMeshTopology();
   const fps = options.fps ?? 30;
   const frameIntervalMs = 1000 / fps;
   const frames: VisionFrame[] = [];

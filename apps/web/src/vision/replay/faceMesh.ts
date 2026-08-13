@@ -1,4 +1,3 @@
-import { FaceLandmarker } from '@mediapipe/tasks-vision';
 import type { FaceObservation, Landmark } from '@/vision/types';
 
 /**
@@ -119,15 +118,54 @@ const LEFT_EYEBROW_REGION: EllipseRegion = {
 const RIGHT_EYEBROW_REGION: EllipseRegion = { ...LEFT_EYEBROW_REGION, centerX: 0.565 };
 const LIPS_REGION: EllipseRegion = { centerX: 0.5, centerY: 0.62, radiusX: 0.05, radiusY: 0.018 };
 
-// Cached once — FaceLandmarker's connection constants never change, and
-// this file is otherwise called once per generated demo frame at fixture-
-// build time (not a real-time hot path).
-const OVAL_LOOPS = walkConnectionsIntoLoops(FaceLandmarker.FACE_LANDMARKS_FACE_OVAL);
-const LEFT_EYE_LOOPS = walkConnectionsIntoLoops(FaceLandmarker.FACE_LANDMARKS_LEFT_EYE);
-const RIGHT_EYE_LOOPS = walkConnectionsIntoLoops(FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE);
-const LEFT_EYEBROW_LOOPS = walkConnectionsIntoLoops(FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW);
-const RIGHT_EYEBROW_LOOPS = walkConnectionsIntoLoops(FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW);
-const LIPS_LOOPS = walkConnectionsIntoLoops(FaceLandmarker.FACE_LANDMARKS_LIPS);
+interface FaceMeshTopology {
+  ovalLoops: number[][];
+  leftEyeLoops: number[][];
+  rightEyeLoops: number[][];
+  leftEyebrowLoops: number[][];
+  rightEyebrowLoops: number[][];
+  lipsLoops: number[][];
+}
+
+let cachedTopology: FaceMeshTopology | null = null;
+let topologyPromise: Promise<FaceMeshTopology> | null = null;
+
+/**
+ * Loads @mediapipe/tasks-vision's real face connection constants and walks
+ * them into loops (see walkConnectionsIntoLoops's doc comment above) once,
+ * caching the result — same "cached once, connection constants never
+ * change" reasoning this file always had, just resolved lazily now instead
+ * of at module-import time.
+ *
+ * Dynamically imported rather than a static top-level import deliberately:
+ * this file is reachable from Demo Mode's fixture builder
+ * (`fixtures.ts`), which is itself reachable from `VisionEngine`'s eager
+ * singleton construction (`ReplaySource` is constructed unconditionally,
+ * see its own doc comment) — a static import here would drag
+ * `@mediapipe/tasks-vision` back into the eagerly-loaded bundle through
+ * this one remaining path, undoing every other "dynamically import
+ * @mediapipe/tasks-vision" fix in this codebase (HandLandmarkerService.ts
+ * and friends). Callers must await this once before calling
+ * `generateSyntheticFace` — see `fixtures.ts`'s
+ * `generateGestureShowcaseFixture`.
+ */
+export function preloadFaceMeshTopology(): Promise<FaceMeshTopology> {
+  if (!topologyPromise) {
+    topologyPromise = import('@mediapipe/tasks-vision').then((m) => {
+      const topology: FaceMeshTopology = {
+        ovalLoops: walkConnectionsIntoLoops(m.FaceLandmarker.FACE_LANDMARKS_FACE_OVAL),
+        leftEyeLoops: walkConnectionsIntoLoops(m.FaceLandmarker.FACE_LANDMARKS_LEFT_EYE),
+        rightEyeLoops: walkConnectionsIntoLoops(m.FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE),
+        leftEyebrowLoops: walkConnectionsIntoLoops(m.FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW),
+        rightEyebrowLoops: walkConnectionsIntoLoops(m.FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW),
+        lipsLoops: walkConnectionsIntoLoops(m.FaceLandmarker.FACE_LANDMARKS_LIPS),
+      };
+      cachedTopology = topology;
+      return topology;
+    });
+  }
+  return topologyPromise;
+}
 
 /** A brief blink roughly every 2.4s — mostly open, a quick eased
  *  close-and-reopen, not a sustained "eyes closed" state. Purely a demo
@@ -155,21 +193,36 @@ function mouthOpenFactor(timeMs: number): number {
  * timeline. `timeMs` drives the blink/mouth animation independently of
  * whatever the synthetic hand is doing at the same moment — a real face
  * and hand move independently too.
+ *
+ * Requires `preloadFaceMeshTopology()` to have already resolved (see its
+ * doc comment) — every caller in this codebase goes through
+ * `fixtures.ts`'s `generateGestureShowcaseFixture`, which awaits it once
+ * before calling this in a loop, so the topology is always cached by the
+ * time real per-frame calls happen.
  */
 export function generateSyntheticFace(timeMs: number): FaceObservation {
+  if (!cachedTopology) {
+    throw new Error('generateSyntheticFace() called before preloadFaceMeshTopology() resolved');
+  }
+  const topology = cachedTopology;
   const points = new Map<number, Landmark>();
 
-  placeLoops(OVAL_LOOPS, FACE_OVAL_REGION, points);
+  placeLoops(topology.ovalLoops, FACE_OVAL_REGION, points);
 
   const eyeOpenness = 1 - blinkFactor(timeMs) * 0.85; // never fully flattens to a line
-  placeLoops(LEFT_EYE_LOOPS, { ...LEFT_EYE_REGION, radiusY: LEFT_EYE_REGION.radiusY * eyeOpenness }, points);
-  placeLoops(RIGHT_EYE_LOOPS, { ...RIGHT_EYE_REGION, radiusY: RIGHT_EYE_REGION.radiusY * eyeOpenness }, points);
+  placeLoops(topology.leftEyeLoops, { ...LEFT_EYE_REGION, radiusY: LEFT_EYE_REGION.radiusY * eyeOpenness }, points);
+  placeLoops(topology.rightEyeLoops, { ...RIGHT_EYE_REGION, radiusY: RIGHT_EYE_REGION.radiusY * eyeOpenness }, points);
 
-  placeLoops(LEFT_EYEBROW_LOOPS, LEFT_EYEBROW_REGION, points);
-  placeLoops(RIGHT_EYEBROW_LOOPS, RIGHT_EYEBROW_REGION, points);
+  placeLoops(topology.leftEyebrowLoops, LEFT_EYEBROW_REGION, points);
+  placeLoops(topology.rightEyebrowLoops, RIGHT_EYEBROW_REGION, points);
 
   const mouthOpen = mouthOpenFactor(timeMs);
-  placeLoops(LIPS_LOOPS, { ...LIPS_REGION, radiusY: LIPS_REGION.radiusY * (0.5 + mouthOpen) }, points, [1, 0.4]);
+  placeLoops(
+    topology.lipsLoops,
+    { ...LIPS_REGION, radiusY: LIPS_REGION.radiusY * (0.5 + mouthOpen) },
+    points,
+    [1, 0.4],
+  );
 
   const maxIndex = Math.max(...points.keys());
   const landmarks: Landmark[] = [];
