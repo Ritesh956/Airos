@@ -1455,6 +1455,43 @@ if you don't know to watch for it.
     from that measurement *and* the more honest description of when the
     work should run.
 
+18. **Every `Toggle` in the app rendered its knob outside the track when
+    switched on** (post-Phase-14 maintenance, user-reported: "the demo
+    button is bugged, when it's turned on, goes out of bound"). Root
+    cause was two layered issues in `ui/Toggle.tsx`, found by bisecting
+    with isolated, hand-built DOM elements outside React entirely (adding
+    classes/styles one at a time) rather than guessing from the compiled
+    CSS: (a) a genuine Chromium rendering quirk where a `<button>`
+    element's internal layout centers an absolutely-positioned child that
+    doesn't pin an edge (`left`/`right` both effectively "auto") — the
+    knob's un-translated base position was silently the button's
+    horizontal *center*, not its left edge, verified by scanning button
+    width from 10px to 200px and confirming the knob's offset was always
+    exactly `width / 2`, reproducing identically with zero Tailwind
+    classes involved (plain inline `position:absolute` on a bare
+    `<button>`), so this is a browser behavior, not anything specific to
+    this app's CSS build; (b) the two `translate-x-*` classes
+    (`translate-x-[22px]` for checked, `translate-x-0.5` for unchecked)
+    were being added on top of that already-wrong centered base, so the
+    unchecked state's small translate never fully corrected it and the
+    checked state's 22px pushed the knob well past the track's right
+    edge into visibly empty space. Fixed by pinning `left-0.5` explicitly
+    on the knob (removing the "auto" ambiguity outright) and re-deriving
+    the translate values as deltas *from* that pinned base rather than
+    absolute targets (checked is now `translate-x-[20px]`, not `[22px]`,
+    since the 2px is already supplied by `left-0.5`). Verified via
+    `getBoundingClientRect()` in a real Chrome tab (not the sandboxed
+    preview pane) that the knob is fully contained within the track in
+    both states, and visually via screenshots before/after. **Lesson**:
+    for any absolutely-positioned element meant to be offset via
+    `translate`/`transform`, always pin at least one edge (`left-0`,
+    `top-0`, etc.) explicitly rather than relying on the "auto" static-
+    position fallback — which edge/position a browser resolves "auto" to
+    for a `position:absolute` child of a `<button>` specifically is not
+    the plain "top-left of content box" most people assume, and this
+    class of bug is invisible from reading the component's source code
+    alone; it only showed up by measuring real rendered geometry.
+
 ## Process notes for whoever (whatever) continues this
 
 - Follow the phase gate literally: typecheck, lint, test, build, *then*

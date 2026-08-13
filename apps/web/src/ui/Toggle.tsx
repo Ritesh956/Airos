@@ -34,8 +34,21 @@ export function Toggle({ checked, onChange, label, description, disabled }: Togg
       >
         <span
           className={cn(
-            'absolute top-0.5 h-[18px] w-[18px] rounded-full bg-ink-0 transition-transform',
-            checked ? 'translate-x-[22px]' : 'translate-x-0.5',
+            // `left-0.5` is load-bearing, not decorative: a <button>'s
+            // internal rendering centers an absolutely-positioned child that
+            // doesn't pin an edge (left/right both effectively "auto"),
+            // regardless of translate-x — without it, the knob's un-translated
+            // base position sits at the button's horizontal center, so
+            // translate-x-[22px] pushed it out past the track's right edge
+            // entirely. Pinning left explicitly removes that ambiguity. See
+            // CLAUDE.md for the full diagnosis.
+            'absolute left-0.5 top-0.5 h-[18px] w-[18px] rounded-full bg-ink-0 transition-transform',
+            // Delta from the left-0.5 (2px) base, not an absolute target:
+            // checked = 2px base + 20px translate = 22px from the left,
+            // landing the knob 2px from the track's right edge too — the
+            // same symmetric inset the unchecked (0px translate) state has
+            // on the left.
+            checked ? 'translate-x-[20px]' : 'translate-x-0',
           )}
         />
       </button>
