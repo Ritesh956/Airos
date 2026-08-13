@@ -36,6 +36,12 @@ class VisionEngineImpl {
   /** Tracks cameraState so recompute() can detect "camera stopped, source
    *  stayed 'camera'" — see the comment below. */
   private lastCameraActive = false;
+  /** Degradation ladder step 4 (IMPLEMENTATION.md §9): when true, face/pose
+   *  are masked out of the union regardless of what any consumer requested.
+   *  Only vision/perf/DegradationController.ts sets this, and only while
+   *  Gesture Lab (the one module that ever requests these) isn't active —
+   *  see degradationLadder.ts's getAppliedEffects(). */
+  private suppressSecondaryTasks = false;
 
   /** Hot-path ref channel: the latest frame, updated outside React state. */
   latest: VisionFrame | null = null;
@@ -61,12 +67,29 @@ class VisionEngineImpl {
     return () => this.frameListeners.delete(callback);
   }
 
+  /** Degradation ladder step 4 — see the field doc above. */
+  setSuppressSecondaryTasks(suppress: boolean): void {
+    if (this.suppressSecondaryTasks === suppress) return;
+    this.suppressSecondaryTasks = suppress;
+    this.recompute();
+  }
+
+  /** Degradation ladder step 3 — forwards to whichever source is a real
+   *  camera; ReplaySource's implementation is a no-op. */
+  setFrameSkipEnabled(enabled: boolean): void {
+    this.sources.camera.setFrameSkipEnabled(enabled);
+  }
+
   private unionTasks(): VisionTaskRequest {
     const union = { ...NO_TASKS };
     for (const request of this.requests.values()) {
       union.hand = union.hand || request.hand;
       union.face = union.face || request.face;
       union.pose = union.pose || request.pose;
+    }
+    if (this.suppressSecondaryTasks) {
+      union.face = false;
+      union.pose = false;
     }
     return union;
   }

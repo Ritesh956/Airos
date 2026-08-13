@@ -1,9 +1,11 @@
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { MODULE_REGISTRY } from '@/app/moduleRegistry';
 import { useStoreSelector } from '@/hooks/useStore';
 import { appStore, toggleCommandPalette, type VoiceState } from '@/state/appStore';
+import { visionStore } from '@/state/visionStore';
+import { DEGRADATION_STEPS } from '@/vision/perf/degradationLadder';
 import { StatusPill } from '@/ui/StatusPill';
-import { CommandIcon, MicIcon } from '@/ui/icons';
+import { CommandIcon, MicIcon, WarningIcon } from '@/ui/icons';
 import { cn } from '@/utils/cn';
 
 const VOICE_PILL_CONFIG: Record<VoiceState, { label: string; dot: string; pulse?: boolean }> = {
@@ -27,11 +29,32 @@ function VoiceStatusPill({ state }: { state: VoiceState }) {
   );
 }
 
+/** Quiet indicator for degradation ladder steps 1-4 — step 5 gets its own
+ *  full-width DegradationBanner instead, per the spec's explicit "surface a
+ *  banner" call-out for that step only (see its doc comment). A Link
+ *  rather than a button: "the perf panel" this points to is just the
+ *  Analytics route. */
+function PerfPill({ level }: { level: number }) {
+  const step = DEGRADATION_STEPS[level - 1];
+  if (!step) return null;
+  return (
+    <Link
+      to="/analytics"
+      title={`${step.label} — ${step.description}`}
+      className="inline-flex items-center gap-2 rounded-full border border-warning-500/30 bg-warning-500/10 px-3 py-1 text-xs text-ink-1 transition-colors hover:border-warning-500/50"
+    >
+      <WarningIcon className="h-3 w-3 text-warning-500" />
+      Reduced performance
+    </Link>
+  );
+}
+
 export function StatusBar() {
   const location = useLocation();
   const cameraState = useStoreSelector(appStore, (s) => s.cameraState);
   const voiceEnabled = useStoreSelector(appStore, (s) => s.settings.voiceEnabled);
   const voiceState = useStoreSelector(appStore, (s) => s.voiceState);
+  const degradationLevel = useStoreSelector(visionStore, (s) => s.degradationLevel);
   const current = MODULE_REGISTRY.find((m) => m.path === location.pathname);
 
   return (
@@ -42,6 +65,7 @@ export function StatusBar() {
       </div>
 
       <div className="flex items-center gap-3">
+        {degradationLevel > 0 && <PerfPill level={degradationLevel} />}
         {voiceEnabled && <VoiceStatusPill state={voiceState} />}
         <StatusPill state={cameraState} />
         <button

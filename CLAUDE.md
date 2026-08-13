@@ -23,7 +23,7 @@ split, why three stores, the Interaction Engine),
 code — each documents real thresholds and real bugs found while building, not
 just design intent.
 
-## Status: Phases 1–12 complete. Resume at Phase 13 (Analytics + Perf).
+## Status: Phases 1–13 complete. Resume at Phase 14 (Polish).
 
 | # | Phase | Status |
 |---|---|---|
@@ -39,8 +39,8 @@ just design intent.
 | 10 | Pose tracking | ✅ done |
 | 11 | Voice + Command Center | ✅ done |
 | 12 | Game Mode | ✅ done |
-| **13** | **Analytics + Perf** | **← start here** |
-| 14 | Polish | pending |
+| 13 | Analytics + Perf | ✅ done |
+| **14** | **Polish** | **← start here** |
 
 ### Git status: nothing committed yet
 
@@ -692,24 +692,126 @@ same `gameApi.fire()` call and `shieldActive` boolean, just fed from
 directly. Flagged plainly rather than claimed as verified, per this
 file's own quality bar on fabricated confidence.
 
-## How to resume: Phase 13, Analytics + Perf
+## Phase 13 shipped: Analytics + Perf
 
-Check IMPLEMENTATION.md §11's phase table (`Real metrics, FPS graph,
-debug mode, degradation ladder` / "Metrics match DevTools") and §9's
-performance budget and degradation ladder — this is the first phase
-whose entire job is making already-real numbers (FPS, inference time,
-hand/face/pose counts) visible as a proper dashboard, and *implementing*
-§9's degradation ladder (drop capture resolution → reduce numHands →
-halve inference rate → disable secondary tasks → recommend Demo Mode),
-which nothing has actually triggered automatically yet — every prior
-phase's FPS readout has been a passive display of `visionStore.fps`,
-never an input to a decision the app makes on its own. `visionStore.ts`'s
-`fpsHistory` ring buffer (120 samples) already exists and already feeds
-nothing but a raw number today — check whether a graph component reads
-it before building one. §12's "no metric is ever estimated, faked, or
-smoothed to look better than it is" applies with extra weight here, since
-this phase's whole point is displaying performance honestly. No open
-questions parked for this phase in IMPLEMENTATION.md §13.
+`apps/web/src/modules/analytics/AnalyticsModule.tsx` is the real module
+now. Two things happened this phase, not one: a real dashboard on top of
+numbers that already existed (`visionStore.fps`/`fpsHistory`), and the
+degradation ladder from IMPLEMENTATION.md §9 actually *doing* something
+for the first time — every prior phase's FPS readout was a passive
+display, never an input to a decision the app made on its own. Composed
+from:
+- `vision/perf/degradationLadder.ts` — the pure half: `DEGRADATION_STEPS`
+  descriptors, `median()` (a rolling median, not a mean, specifically so
+  one GC-pause-style outlier frame can't swing the trigger), and
+  `getAppliedEffects(level, activeModule)` — the single function that
+  decides what a given ladder level actually means for a given active
+  module. This is the one piece of this phase most worth understanding:
+  both `DegradationController` (to decide what to call) and the Analytics
+  dashboard/status-bar pill/banner (to decide what to display) call this
+  *same* function, so the UI can never claim a step is active that the
+  controller didn't really apply, or vice versa — the same "pure core,
+  thin wrapper" split `presentStore.ts`'s timer math and
+  `gameSimulation.ts` already established, applied here to keep display
+  and enforcement from drifting apart instead of to keep tests simple.
+- `vision/perf/DegradationController.ts` — the stateful wrapper.
+  Subscribes to `visionStore` (fires on every ~10Hz FPS publish) and
+  `appStore` (module/source/camera changes), computes the rolling
+  3-second median from `fpsHistory`, and escalates/de-escalates one step
+  at a time with a hysteresis gap (20fps triggers escalation, 25fps
+  triggers recovery — not the same number, so the ladder can't flap right
+  at one boundary). Only ever active while a real camera is the live
+  source; switching to Demo Mode or stopping the camera resets it to 0
+  immediately, same "reset whenever frames could stop arriving" instinct
+  as bugs #2/#8/#9. **Found and fixed a real re-entrancy bug here before
+  it shipped — see bug #13 below, it's a genuine addition to the bug
+  taxonomy, not a restatement of #12.**
+- `CameraManager.restoreDefaultResolution()`, `HandLandmarkerService
+  .setHandLandmarkerNumHands()`, `CameraLandmarkSource`'s
+  `setFrameSkipEnabled()`, and `VisionEngine.setSuppressSecondaryTasks()`
+  — the four real side effects the ladder's steps 1-4 call. Frame skipping
+  (step 3) holds the *last real* detection on the skipped tick rather than
+  inventing motion — `inferenceMs` correctly reads 0 on a held tick,
+  keeping faith with §9's "never estimate" rule even under degradation.
+  Step 2 (hands→1) is skipped while 3D Studio is active (its two-hand
+  gesture genuinely needs both — `StudioEngine.ts`); step 4 (face/pose
+  off) is skipped while Gesture Lab is active (the only module that ever
+  requests them) — both gates live in `getAppliedEffects()`, not
+  duplicated in the controller.
+- `modules/analytics/FpsGraph.tsx` — plots `visionStore.fpsHistory`
+  directly (no separate rAF loop; the store's own ~10Hz publish is a fine
+  redraw cadence for a graph a human reads). Reference lines are drawn at
+  the ladder's own real thresholds (20fps/25fps), not a loosely-converted
+  version of §9's ms-based frame-time budget — that budget measures a
+  different thing (total per-frame processing time) and converting it to
+  an FPS number would misrepresent itself as "the same number."
+- `hooks/useRenderRate.ts` — a real, scoped render-count probe (a ref
+  incremented in the render body, sampled once a second), not React
+  DevTools' Profiler API and not a guess. Deliberately labelled "This
+  panel's renders/sec," not an app-wide claim — see its doc comment for
+  why a wider claim would be dishonest given what's actually measured.
+- Debug Mode reuses Gesture Lab's `LandmarkTable`/`GestureTimeline`
+  as-is (both already self-contained, subscribing to `visionEngine`/
+  `interactionStore` directly) rather than rebuilding a second copy — the
+  same reuse-before-duplicate instinct `CameraStage` was extracted for in
+  Phase 5.
+- `app/shell/DegradationBanner.tsx` (a full-width banner, level 5 only —
+  "surface a banner recommending Demo Mode" per §9) and `StatusBar.tsx`'s
+  `PerfPill` (a quieter pill for levels 1-4, "each announced in the status
+  bar") — both read `getAppliedEffects()` too, same single-source-of-truth
+  reasoning.
+
+`moduleRegistry.tsx`'s `analytics` entry is now `status: 'ready'` — the
+last module to leave `ui/ModulePlaceholder.tsx`.
+
+### Bug found and fixed: a re-entrancy hazard one level deeper than #12
+
+`DegradationController.evaluate()` calls `setDegradationLevel(this.level)`
+(a write into `visionStore`) and *then* calls `this.applyEffects(...)`.
+But `DegradationController` also subscribes to `visionStore` itself — so
+`setDegradationLevel`'s write synchronously re-enters `evaluate()` (and
+thus a *second*, nested call to `applyEffects`) before the outer call ever
+reaches its own `applyEffects` line. Bug #12's equality guard on the
+store setter stops this from recursing *infinitely* (the nested call's own
+`setDegradationLevel` is a no-op, since the value's already been written),
+but it does nothing to stop the outer and the nested call from both acting
+on the *same* transition: both read the same stale `this.applied` (neither
+has updated it yet) and both independently decide "resolution isn't
+downgraded yet," so both called `cameraManager.downgradeResolution()` —
+caught immediately by `DegradationController.test.ts`'s
+`toHaveBeenCalledTimes(1)` assertions failing with `2`, not found live.
+Fixed by committing `this.applied = next` **synchronously, before any
+`await`**, inside `applyEffects` — whichever call (inner or outer) reaches
+that line first "claims" the transition, so the other sees nothing left to
+do and returns immediately. **Lesson**: bug #12's equality-guard pattern
+prevents unbounded re-entrant *recursion*, but a synchronous re-entrant
+call can still slip in *before* a caller finishes acting on a decision it
+already made — anything that (a) writes into a store it also subscribes
+to and (b) does asynchronous work as a *result* of that write needs to
+commit its own "I'm handling this" bookkeeping before the first `await`,
+not after, or a sibling re-entrant call can duplicate the same side
+effect. A second, independent guard (`resolutionChangeInFlight`) also
+exists in this file, but for a different hazard: it stops `evaluate()`
+from reacting to the *camera-state transitions* a resolution restart
+itself causes (stopping/off/starting/active), which would otherwise read
+"camera not live" mid-restart and immediately reverse the very change in
+progress.
+
+## How to resume: Phase 14, Polish
+
+Check IMPLEMENTATION.md §11's phase table (`Motion design, a11y pass,
+README, demo fixtures, deploy` / "Lighthouse ≥90; demo mode works") and
+§12's quality bar — this is the last phase, and it's cleanup/hardening
+rather than new capability: a motion-design pass (respecting
+`settings.reduceMotion`, already wired but worth auditing end to end), a
+real accessibility pass (keyboard-only navigation, screen-reader labels,
+color contrast — nothing in IMPLEMENTATION.md §11's earlier phases
+gated on this explicitly), bringing README.md/IMPLEMENTATION.md's
+remaining stale spots up to date (the "Working today" prose in README.md
+predates Phases 9-12 and is missing Face/Pose/Voice/Game Mode paragraphs
+— Phase 13 fixed the Analytics-specific claim there but didn't backfill
+the rest, since it wasn't this phase's job), demo fixtures, and a deploy
+pass. No open questions parked for this phase in IMPLEMENTATION.md §13.
 ## Architecture quick-reference (see docs/ARCHITECTURE.md for full detail)
 
 - **Three state stores**: `appStore` (module/camera/settings, user-driven),
@@ -751,7 +853,7 @@ questions parked for this phase in IMPLEMENTATION.md §13.
 ```bash
 npm run typecheck   # tsc -b across all 3 workspaces
 npm run lint        # eslint, includes the boundaries rule
-npm run test:run    # vitest run — 203 tests as of end of Phase 12
+npm run test:run    # vitest run — 222 tests as of end of Phase 13
 npm run build       # tsc + vite build, all 3 workspaces
 ```
 Run all four before considering any phase done. `npm run dev` (or the
@@ -952,6 +1054,36 @@ if you don't know to watch for it.
     — never assume, the way every prior consumer safely could, that
     "nothing writes back into the store it's subscribed to" just because
     that's held true so far.
+
+13. **A re-entrancy hazard one level deeper than #12, caught by a failing
+    test, not live** (Phase 13). `DegradationController.evaluate()` writes
+    `visionStore.degradationLevel` (via `setDegradationLevel`) and *then*
+    calls `this.applyEffects(...)` — but `DegradationController` also
+    subscribes to `visionStore` itself, so that write synchronously
+    re-enters `evaluate()` (and a *second*, nested `applyEffects` call)
+    before the outer call ever reaches its own `applyEffects` line. Bug
+    #12's equality guard stops this from recursing *infinitely* (the
+    nested call's own `setDegradationLevel` is a no-op, since the value's
+    already written) — but it does nothing to stop the outer and the
+    nested call from both acting on the *same* transition: both read the
+    same stale `this.applied` (neither has updated it yet) and both
+    independently decided "resolution isn't downgraded yet," so both
+    called `cameraManager.downgradeResolution()`. Caught immediately by
+    `DegradationController.test.ts`'s `toHaveBeenCalledTimes(1)`
+    assertions failing with `2` — never hit live. Fixed by committing
+    `this.applied = next` **synchronously, before any `await`**, inside
+    `applyEffects`: whichever call (inner or outer) reaches that line
+    first "claims" the transition, so the other sees nothing left to do
+    and returns immediately. **Lesson**: an equality-guard setter (#12's
+    fix) prevents unbounded re-entrant *recursion*, but doesn't by itself
+    stop a synchronous re-entrant call from slipping in *before* the
+    original caller finishes acting on a decision it already made —
+    anything that (a) writes into a store it also subscribes to and (b)
+    does asynchronous work as a *result* of that write needs to commit its
+    own "I'm handling this" bookkeeping before the first `await`, not
+    after, or a sibling re-entrant call can duplicate the same side
+    effect. Don't assume #12's fix is the complete pattern for this class
+    of bug — it stops the infinite case, not every duplicate-call case.
 
 ## Process notes for whoever (whatever) continues this
 

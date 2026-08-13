@@ -45,6 +45,14 @@ export function preloadHandLandmarker(): Promise<void> {
   return getHandLandmarker().then(() => undefined);
 }
 
+/** Step 2 of the performance degradation ladder (IMPLEMENTATION.md §9):
+ *  drop from 2 tracked hands to 1. `setOptions()` reconfigures the existing
+ *  landmarker in place — no reload, no dropped frames. */
+export async function setHandLandmarkerNumHands(numHands: 1 | 2): Promise<void> {
+  const landmarker = await getHandLandmarker();
+  await landmarker.setOptions({ numHands });
+}
+
 function toLandmarks(points: { x: number; y: number; z: number; visibility?: number }[]): Landmark[] {
   return points.map((p) => ({ x: p.x, y: p.y, z: p.z, visibility: p.visibility }));
 }

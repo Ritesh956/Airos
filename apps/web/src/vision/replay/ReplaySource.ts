@@ -49,6 +49,12 @@ export class ReplaySource implements LandmarkSource {
     return () => this.listeners.delete(callback);
   }
 
+  /** Playback has no MediaPipe inference to skip — the degradation ladder
+   *  only ever applies to a real camera stream. */
+  setFrameSkipEnabled(): void {
+    // Intentionally a no-op.
+  }
+
   private scheduleNext(): void {
     this.rafId = requestAnimationFrame(() => this.tick());
   }

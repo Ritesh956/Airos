@@ -19,4 +19,10 @@ export interface LandmarkSource {
   updateTasks(tasks: VisionTaskRequest): void;
   /** Subscribe to every produced frame. Returns an unsubscribe function. */
   subscribe(callback: (frame: VisionFrame) => void): () => void;
+  /** Step 3 of the performance degradation ladder (IMPLEMENTATION.md §9):
+   *  halve real inference calls, holding the last real detection on the
+   *  skipped ticks in between rather than fabricating motion. A no-op for
+   *  sources with no per-frame inference cost to reduce (see
+   *  ReplaySource's implementation). */
+  setFrameSkipEnabled(enabled: boolean): void;
 }

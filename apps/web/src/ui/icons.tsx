@@ -127,3 +127,12 @@ export function CommandIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function WarningIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3.5 21.5 20h-19Z" />
+      <path d="M12 9.5v4.5M12 17h.01" />
+    </svg>
+  );
+}

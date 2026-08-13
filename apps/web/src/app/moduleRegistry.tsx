@@ -120,7 +120,7 @@ export const MODULE_REGISTRY: ModuleDescriptor[] = [
     icon: AnalyticsIcon,
     shortcut: '8',
     phase: 13,
-    status: 'planned',
+    status: 'ready',
     component: lazy(() => import('@/modules/analytics/AnalyticsModule')),
   },
   {

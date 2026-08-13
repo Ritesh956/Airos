@@ -18,10 +18,22 @@ export interface VisionState {
   source: VisionSourceKind | null;
   /** Ring buffer of recent FPS samples for the performance graph (Phase 13). */
   fpsHistory: number[];
+  /** IMPLEMENTATION.md §9's degradation ladder step currently in effect,
+   *  0-5 (0 = no degradation). Written only by
+   *  vision/perf/DegradationController.ts. What each level actually does is
+   *  derived, not stored here — see degradationLadder.ts's
+   *  getAppliedEffects(), the single source of truth both the controller
+   *  and the Analytics UI read from, so a displayed step can never drift
+   *  from what's really running. */
+  degradationLevel: number;
 }
 
 const FPS_HISTORY_LENGTH = 120;
-const PUBLISH_INTERVAL_MS = 100; // ~10Hz cold-path publish rate, per §3
+// ~10Hz cold-path publish rate, per §3. Exported so
+// vision/perf/DegradationController.ts can derive how many fpsHistory
+// samples span a given real time window (e.g. the ladder's 3s sustain
+// check) without hardcoding a second copy of this number.
+export const PUBLISH_INTERVAL_MS = 100;
 // Smoothing factor for the FPS exponential moving average — low enough
 // that a single slow frame doesn't make the readout jump around, high
 // enough that a real, sustained frame-rate change (the degradation ladder,
@@ -37,6 +49,7 @@ export const visionStore = createStore<VisionState>({
   totalMs: 0,
   source: null,
   fpsHistory: [],
+  degradationLevel: 0,
 });
 
 let lastFrameTimestamp = 0;
@@ -74,8 +87,23 @@ const throttledPublish = throttle((frame: VisionFrame) => {
     totalMs: frame.timings.totalMs,
     source: frame.source,
     fpsHistory,
+    degradationLevel: prev.degradationLevel,
   });
 }, PUBLISH_INTERVAL_MS);
+
+/**
+ * Written only by vision/perf/DegradationController.ts. Guarded the same
+ * way setVoiceState (appStore.ts) is guarded, and for the identical
+ * reason: DegradationController's evaluate() is itself a visionStore
+ * subscriber, and calling this unconditionally would re-enter notify()
+ * from inside notify() on every single call. Skipping the write when
+ * nothing actually changed breaks that cycle at its root — see CLAUDE.md
+ * bug #12.
+ */
+export function setDegradationLevel(level: number): void {
+  if (visionStore.get().degradationLevel === level) return;
+  visionStore.update({ degradationLevel: level });
+}
 
 /** Called from the vision engine's per-frame callback (hot path). The
  *  store update is throttled to PUBLISH_INTERVAL_MS so React never
@@ -101,5 +129,6 @@ export function resetVisionStore(): void {
     totalMs: 0,
     source: null,
     fpsHistory: [],
+    degradationLevel: 0,
   });
 }

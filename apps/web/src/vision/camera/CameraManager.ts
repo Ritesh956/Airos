@@ -101,6 +101,14 @@ export class CameraManager {
     await this.start({ width, height });
   }
 
+  /** Reverses downgradeResolution() once FPS recovers — restarts the
+   *  stream back at DEFAULT_CONSTRAINTS' resolution (no override). */
+  async restoreDefaultResolution(): Promise<void> {
+    if (!this.stream) return;
+    this.stop();
+    await this.start();
+  }
+
   stop(): void {
     if (!this.stream && !this.videoEl) {
       setCameraState('off');

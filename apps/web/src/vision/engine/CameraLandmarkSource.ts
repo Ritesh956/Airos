@@ -35,6 +35,15 @@ export class CameraLandmarkSource implements LandmarkSource {
   private listeners = new Set<(frame: VisionFrame) => void>();
   private unsubscribeAppStore: (() => void) | null = null;
 
+  /** Step 3 of the degradation ladder (IMPLEMENTATION.md §9). When enabled,
+   *  only every other tick actually calls into MediaPipe; the skipped tick
+   *  reuses lastObservations — a real, previously-measured detection held
+   *  for one extra frame, not a synthesized guess. */
+  private frameSkipEnabled = false;
+  private skipCounter = 0;
+  private lastObservations: { hands: HandObservation[]; face: FaceObservation | null; pose: PoseObservation | null } =
+    { hands: [], face: null, pose: null };
+
   async start(tasks: VisionTaskRequest): Promise<void> {
     this.tasks = tasks;
     if (this.armed) return;
@@ -70,6 +79,11 @@ export class CameraLandmarkSource implements LandmarkSource {
   subscribe(callback: (frame: VisionFrame) => void): () => void {
     this.listeners.add(callback);
     return () => this.listeners.delete(callback);
+  }
+
+  setFrameSkipEnabled(enabled: boolean): void {
+    this.frameSkipEnabled = enabled;
+    this.skipCounter = 0;
   }
 
   private syncWithCameraState(): void {
@@ -110,20 +124,39 @@ export class CameraLandmarkSource implements LandmarkSource {
     let pose: PoseObservation | null = null;
     let inferenceMs = 0;
 
-    if (this.tasks.hand) {
-      const result = await detectHands(video, Math.round(frameStart));
-      hands = result.hands;
-      inferenceMs += result.inferenceMs;
-    }
-    if (this.tasks.face) {
-      const result = await detectFace(video, Math.round(frameStart));
-      face = result.face;
-      inferenceMs += result.inferenceMs;
-    }
-    if (this.tasks.pose) {
-      const result = await detectPose(video, Math.round(frameStart));
-      pose = result.pose;
-      inferenceMs += result.inferenceMs;
+    // Frame skipping (degradation ladder step 3) only ever holds a
+    // *previous real* detection — it never fabricates a new one. Skipping
+    // is decided per tick, before any detect* call, so a skipped tick costs
+    // nothing beyond reading lastObservations.
+    const shouldInfer = !this.frameSkipEnabled || this.skipCounter % 2 === 0;
+    if (this.frameSkipEnabled) this.skipCounter++;
+
+    if (shouldInfer) {
+      if (this.tasks.hand) {
+        const result = await detectHands(video, Math.round(frameStart));
+        hands = result.hands;
+        inferenceMs += result.inferenceMs;
+      }
+      if (this.tasks.face) {
+        const result = await detectFace(video, Math.round(frameStart));
+        face = result.face;
+        inferenceMs += result.inferenceMs;
+      }
+      if (this.tasks.pose) {
+        const result = await detectPose(video, Math.round(frameStart));
+        pose = result.pose;
+        inferenceMs += result.inferenceMs;
+      }
+      this.lastObservations = { hands, face, pose };
+    } else {
+      // Held, not re-inferred — inferenceMs stays 0 because no inference
+      // ran on this tick, per the "never estimate" rule (IMPLEMENTATION.md
+      // §9). Only replay tasks currently active, so a task acquired after
+      // the last real detection correctly shows nothing until the next
+      // real tick rather than a stale value from before it was requested.
+      hands = this.tasks.hand ? this.lastObservations.hands : [];
+      face = this.tasks.face ? this.lastObservations.face : null;
+      pose = this.tasks.pose ? this.lastObservations.pose : null;
     }
 
     const frame: VisionFrame = {

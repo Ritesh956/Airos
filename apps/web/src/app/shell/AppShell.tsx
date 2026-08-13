@@ -8,6 +8,8 @@ import { useNavigationCommands } from './useNavigationCommands';
 import { useGlobalKeyboardCommands } from '@/hooks/useGlobalKeyboardCommands';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { usePerfDegradation } from '@/hooks/usePerfDegradation';
+import { DegradationBanner } from './DegradationBanner';
 
 function ModuleFallback() {
   return (
@@ -24,12 +26,14 @@ export function AppShell() {
   useNavigationCommands();
   useGlobalKeyboardCommands();
   useVoiceCommands();
+  usePerfDegradation();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface-0 text-ink-0">
       <Nav />
       <div className="flex min-w-0 flex-1 flex-col">
         <StatusBar />
+        <DegradationBanner />
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-6xl px-6 py-8">
             <Suspense fallback={<ModuleFallback />}>

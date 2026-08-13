@@ -229,7 +229,7 @@ it, and a lazy-loaded component. The sidebar nav, the router
 registered in `app/shell/useNavigationCommands.ts` all read this one array.
 Adding a tenth module means adding one entry here — no other file changes.
 
-## What's actually built vs. what's still a placeholder
+## What's actually built (everything, as of Phase 13)
 
 Home, Settings, Air Cursor, Gesture Lab, 3D Studio, Air Draw, and
 Presentation are fully functional: camera start/stop with real error
@@ -268,9 +268,16 @@ entire game (enemy movement, spawning, collisions, lives) implemented as
 a pure, unit-tested `stepSimulation()` function
 (`modules/game/gameSimulation.ts`) a thin stateful wrapper drives every
 animation frame — the same "pure core, thin wrapper" split Presentation's
-timer math established. The remaining module (`Analytics`) is the one
-real, navigable route that still renders `ui/ModulePlaceholder.tsx` — an
-honest "not built yet, here's what's planned and in which phase" screen,
-not a fake button that pretends to do something. See IMPLEMENTATION.md
-§11 for the full phase plan, or CLAUDE.md for exactly where things stand
-right now.
+timer math established, and Analytics (Phase 13) is a real performance
+dashboard: live FPS (smoothed and a rolling 3-second median), inference/
+frame-time readouts, an FPS history graph, a Debug Mode reusing Gesture
+Lab's landmark table and gesture timeline, and IMPLEMENTATION.md §9's
+degradation ladder fully wired to real measured FPS —
+`vision/perf/DegradationController.ts` escalates through resolution
+downgrade, single-hand tracking, halved inference, and disabled secondary
+tasks as sustained low FPS demands, each step module-gated (3D Studio
+keeps both hands, Gesture Lab's face/pose toggles are never overridden)
+and reversible with hysteresis once FPS recovers. Every module in
+`app/moduleRegistry.tsx` is now `status: 'ready'` — none render
+`ui/ModulePlaceholder.tsx` anymore. See IMPLEMENTATION.md §11 for the
+full phase plan, or CLAUDE.md for exactly where things stand right now.

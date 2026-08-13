@@ -15,10 +15,10 @@ decision — start there.
 
 ## Current status
 
-**Phases 1–12 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
+**Phases 1–13 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
 Air Cursor, Gesture Lab, 3D Studio, Air Draw, Presentation, Face
-Tracking, Pose Tracking, Voice + Command Center, Game Mode** — complete.
-See IMPLEMENTATION.md §11 for the full phase plan.
+Tracking, Pose Tracking, Voice + Command Center, Game Mode, Analytics +
+Perf** — complete. See IMPLEMENTATION.md §11 for the full phase plan.
 
 Working today: the app shell, routing, the design system, the camera
 lifecycle (start/stop/error handling, verified against the OS camera
@@ -79,9 +79,21 @@ interaction here (unlike 3D Studio's two-hand gesture): the synthetic
 fixture's swipe keyframe advances slides through the real code path. Full
 mouse and keyboard parity throughout.
 
-The remaining module (`Game Mode`) and `Analytics` are real, navigable
-routes that honestly state what's planned and which phase builds them —
-not placeholder buttons that pretend to work.
+Analytics is a real performance dashboard, not a placeholder: live FPS
+(smoothed and a rolling 3-second median), inference/frame-time readouts,
+an FPS history graph plotted from the same measured samples the
+degradation ladder itself acts on, and a Debug Mode that reuses Gesture
+Lab's landmark table and gesture timeline. The degradation ladder from
+IMPLEMENTATION.md §9 is fully wired, not just documented: sustained low
+FPS automatically drops capture resolution, then hand count, then halves
+the inference rate, then disables face/pose tracking, then recommends
+Demo Mode — each step reversible with hysteresis, each one module-gated
+(3D Studio always keeps both hands, Gesture Lab's face/pose toggles are
+never overridden), and every step's real on/off state is readable from
+one function (`getAppliedEffects()`) shared by the controller and the UI
+so the dashboard can never claim a step is active that isn't.
+`Analytics` was the last module still showing `ui/ModulePlaceholder.tsx`
+— the whole app is now real, navigable functionality end to end.
 
 ## Getting started
 

@@ -7,7 +7,7 @@ the contracts between layers, the phase order, and the definition of done for ea
 phase. It is meant to be read by a developer, updated as the build progresses, and
 used as the source of truth when a decision needs re-litigating.
 
-**Status:** Phases 1–12 complete. Phases 13–14 pending.
+**Status:** Phases 1–13 complete. Phase 14 pending.
 
 ---
 
