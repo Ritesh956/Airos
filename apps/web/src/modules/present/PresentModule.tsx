@@ -47,7 +47,7 @@ export default function PresentModule() {
       <section>
         <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-[11px] text-ink-2">
           <span className="h-1.5 w-1.5 rounded-full bg-signal-400 animate-pulse-slow" />
-          Phase 8 — Presentation
+          Swipe to advance · thumbs up starts the timer
         </div>
         <h1 className="mt-3 text-2xl font-medium text-ink-0">Presentation</h1>
         <p className="mt-1 max-w-xl text-sm text-ink-2">

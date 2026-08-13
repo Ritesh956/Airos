@@ -7,6 +7,19 @@ export type DrawTool = 'draw' | 'erase' | 'idle';
  *  variety to demo, simple enough to render as swatches. */
 export const DRAW_COLORS = ['#5eead4', '#f4f6fb', '#fbbf24', '#f87171', '#818cf8', '#34d399'] as const;
 
+/** Human names for each swatch, keyed by hex — a screen reader announcing
+ *  "Use colour number f 8 7 1 7 1" told a user nothing (CLAUDE.md UI/UX
+ *  audit finding #17); the palette is a fixed six-entry array, so naming
+ *  it is a one-time cost, not an ongoing one. */
+export const DRAW_COLOR_NAMES: Record<string, string> = {
+  '#5eead4': 'Teal',
+  '#f4f6fb': 'White',
+  '#fbbf24': 'Amber',
+  '#f87171': 'Coral',
+  '#818cf8': 'Indigo',
+  '#34d399': 'Green',
+};
+
 export const MIN_BRUSH_SIZE = 2;
 export const MAX_BRUSH_SIZE = 32;
 const DEFAULT_BRUSH_SIZE = 6;

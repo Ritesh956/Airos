@@ -4,7 +4,7 @@ import type { GestureResult } from '@/gestures/types';
 import type { Handedness, HandObservation, VisionFrame } from '@/vision/types';
 import { mirrorLandmark } from '@/utils/coords';
 import { appStore } from '@/state/appStore';
-import { setCursor } from '@/state/interactionStore';
+import { interactionStore, setCursor, type TrackingState } from '@/state/interactionStore';
 import { throttle } from '@/state/createStore';
 import { getReachBox, mapThroughReachBox } from './calibration';
 import { Point2DFilter } from './OneEuroFilter';
@@ -75,6 +75,7 @@ class CursorEngineImpl {
 
   private lastInputSource = appStore.get().inputSource;
   private lastCameraState = appStore.get().cameraState;
+  private lastTrackingState: TrackingState = interactionStore.get().trackingState;
 
   /** Idempotent — safe to call from every component that wants a cursor. */
   start(): void {
@@ -83,6 +84,7 @@ class CursorEngineImpl {
     ensureGestureBridgeStarted();
     this.syncFilterParams();
     appStore.subscribe(() => this.handleAppStoreChange());
+    interactionStore.subscribe(() => this.handleInteractionStoreChange());
     visionEngine.subscribe((frame) => this.handleFrame(frame));
   }
 
@@ -109,6 +111,31 @@ class CursorEngineImpl {
     // ever — without this, the cursor would freeze in place showing a
     // stale position/gesture as if still current rather than hiding.
     this.handleHandLost();
+  }
+
+  /**
+   * A second, distinct reset trigger from `handleAppStoreChange` — added
+   * after `useGlobalAirCursor` (CLAUDE.md UI/UX audit finding #1) started
+   * mounting this engine for the whole app's lifetime instead of only
+   * while `/cursor` itself was mounted. Once the engine can stay alive
+   * across the hand task being acquired and released repeatedly (e.g.
+   * "Air Cursor everywhere" toggled on with Demo Mode running, then
+   * navigating off Air Cursor's own page), `VisionEngine.recompute()`'s
+   * `!anyActive` branch tears its source down entirely and stops calling
+   * `handleFrame` forever — with no `inputSource`/`cameraState` change for
+   * `handleAppStoreChange` to notice, since neither one actually changed.
+   * `interactionStore.trackingState` already becomes `'idle'` at exactly
+   * that moment (`VisionEngine.recompute`'s own `setTrackingState('idle')`
+   * call), so watching it here catches the gap `handleAppStoreChange`
+   * can't — the same "reset whenever frames could stop arriving for any
+   * reason" lesson CLAUDE.md's bug #8 already documents, one trigger this
+   * file hadn't needed until the engine could outlive its own task.
+   */
+  private handleInteractionStoreChange(): void {
+    const { trackingState } = interactionStore.get();
+    if (trackingState === this.lastTrackingState) return;
+    this.lastTrackingState = trackingState;
+    if (trackingState === 'idle') this.handleHandLost();
   }
 
   private pickPrimaryHand(

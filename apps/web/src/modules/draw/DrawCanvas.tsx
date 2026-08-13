@@ -201,6 +201,8 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
   return (
     <canvas
       ref={canvasRef}
+      role="img"
+      aria-label="Drawing surface. Click and drag with a mouse, or pinch in the air over the camera, to paint."
       className={cn('h-full w-full cursor-crosshair touch-none', className)}
     />
   );

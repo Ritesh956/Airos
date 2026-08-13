@@ -166,6 +166,10 @@ export function HandSkeletonOverlay({ className }: { className?: string }) {
   }, [trackingState]);
 
   return (
-    <canvas ref={canvasRef} className={cn('pointer-events-none absolute inset-0 h-full w-full', className)} />
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      className={cn('pointer-events-none absolute inset-0 h-full w-full', className)}
+    />
   );
 }

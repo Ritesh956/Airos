@@ -19,6 +19,19 @@ const STYLE: Record<Method, string> = {
   DERIVED: 'text-ink-2 border-border-strong bg-surface-3',
 };
 
+const DESCRIPTION: Record<Method, string> = {
+  MODEL: 'Output of a pretrained neural network.',
+  HEURISTIC: 'Rule-based geometric analysis, not a trained classifier.',
+  DERIVED: 'Arithmetic derived from model or heuristic values.',
+};
+
+/** The `title` attribute this used to rely on exclusively is a mouse-only
+ *  tooltip — unreachable by keyboard or touch (CLAUDE.md UI/UX audit
+ *  finding #10), which matters here specifically because the provenance
+ *  taxonomy this badge exists to enforce (IMPLEMENTATION.md §1.4) is a
+ *  stated project value, not decoration. `title` stays as a bonus for
+ *  mouse users; the `sr-only` span is what actually makes the description
+ *  reachable without one. */
 export function MethodBadge({ method, className }: { method: Method; className?: string }) {
   return (
     <span
@@ -27,15 +40,10 @@ export function MethodBadge({ method, className }: { method: Method; className?:
         STYLE[method],
         className,
       )}
-      title={
-        method === 'MODEL'
-          ? 'Output of a pretrained neural network.'
-          : method === 'HEURISTIC'
-            ? 'Rule-based geometric analysis, not a trained classifier.'
-            : 'Arithmetic derived from model or heuristic values.'
-      }
+      title={DESCRIPTION[method]}
     >
       {LABEL[method]}
+      <span className="sr-only"> — {DESCRIPTION[method]}</span>
     </span>
   );
 }

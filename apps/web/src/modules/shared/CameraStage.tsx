@@ -100,7 +100,7 @@ export function CameraStage({
       />
 
       {errorMessage && !isDemoMode && (
-        <p className="mt-3 rounded-lg border border-danger-500/30 bg-danger-500/10 p-3 text-xs text-danger-500">
+        <p role="alert" className="mt-3 rounded-lg border border-danger-500/30 bg-danger-500/10 p-3 text-xs text-danger-500">
           {errorMessage}
         </p>
       )}

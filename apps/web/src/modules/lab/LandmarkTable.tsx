@@ -85,8 +85,8 @@ export function LandmarkTable() {
                 <span className="font-medium text-ink-0">{mirrorHandedness(hand.handedness)} hand</span>
                 <span className="text-mono-tabular">score {hand.handednessScore.toFixed(2)}</span>
               </div>
-              <div className="max-h-72 overflow-y-auto rounded-lg border border-border">
-                <table className="w-full text-left text-xs">
+              <div className="max-h-72 overflow-x-auto overflow-y-auto rounded-lg border border-border">
+                <table className="w-full min-w-[420px] text-left text-xs">
                   <thead className="sticky top-0 bg-surface-2 text-[10px] uppercase tracking-wide text-ink-3">
                     <tr>
                       <th className="px-2 py-1.5">#</th>

@@ -41,7 +41,7 @@ function PerfPill({ level }: { level: number }) {
     <Link
       to="/analytics"
       title={`${step.label} — ${step.description}`}
-      className="inline-flex items-center gap-2 rounded-full border border-warning-500/30 bg-warning-500/10 px-3 py-1 text-xs text-ink-1 transition-colors hover:border-warning-500/50"
+      className="inline-flex items-center gap-2 rounded-full border border-warning-500/30 bg-warning-500/10 px-3 py-1 text-xs text-ink-1 outline-none transition-colors hover:border-warning-500/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400"
     >
       <WarningIcon className="h-3 w-3 text-warning-500" />
       Reduced performance
@@ -71,7 +71,7 @@ export function StatusBar() {
         <button
           onClick={() => toggleCommandPalette(true)}
           aria-label="Open command palette"
-          className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-ink-2 transition-colors hover:border-border-strong hover:text-ink-0"
+          className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-ink-2 outline-none transition-colors hover:border-border-strong hover:text-ink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400"
         >
           <CommandIcon className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Commands</span>

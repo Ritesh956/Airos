@@ -9,6 +9,7 @@ import { Button } from '@/ui/Button';
 import { useCamera } from '@/hooks/useCamera';
 import { checkBrowserSupport } from '@/utils/browserSupport';
 import { VOICE_ERROR_MESSAGES } from '@/interaction/voice/errors';
+import { BUILD_STATUS_SUMMARY } from '@/app/buildStatus';
 
 const VOICE_STATUS_LABEL: Record<'off' | 'listening' | 'error', string> = {
   off: 'Off',
@@ -63,6 +64,15 @@ export default function SettingsModule() {
         </div>
       </Panel>
 
+      <Panel eyebrow="Air Cursor" title="System-wide pointer">
+        <Toggle
+          checked={settings.airCursorEverywhere}
+          onChange={(airCursorEverywhere) => updateSettings({ airCursorEverywhere })}
+          label="Air Cursor everywhere"
+          description="Keep the pointer live on every page, not just Air Cursor's own — point and pinch to click or drag anywhere in AIR OS, including the sidebar nav. Still needs the camera (or Demo Mode) started first."
+        />
+      </Panel>
+
       <Panel eyebrow="Voice" title="Voice control">
         {!voiceSupported ? (
           <p className="text-sm leading-relaxed text-ink-2">{VOICE_ERROR_MESSAGES.unsupported}</p>
@@ -78,7 +88,7 @@ export default function SettingsModule() {
               <div className="mt-3 border-t border-border pt-3">
                 <Readout label="Status" value={VOICE_STATUS_LABEL[voiceState]} method="DERIVED" />
                 {voiceState === 'error' && voiceError && (
-                  <p className="mt-1 text-xs text-danger-500">{VOICE_ERROR_MESSAGES[voiceError]}</p>
+                  <p role="alert" className="mt-1 text-xs text-danger-500">{VOICE_ERROR_MESSAGES[voiceError]}</p>
                 )}
                 <Readout label="Last heard" value={lastVoiceTranscript ?? '—'} method="MODEL" />
                 <Readout
@@ -103,7 +113,7 @@ export default function SettingsModule() {
 
       <Panel eyebrow="About" title="Build">
         <div className="space-y-1 text-sm text-ink-2">
-          <p>AIR OS — Phases 1–11 complete (Architecture through Voice + Command Center).</p>
+          <p>AIR OS — {BUILD_STATUS_SUMMARY}</p>
           <p className="text-ink-3">
             See IMPLEMENTATION.md in the project root for the full phase plan and architectural
             decisions.

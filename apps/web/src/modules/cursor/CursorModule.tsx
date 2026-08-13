@@ -4,16 +4,14 @@ import { Button } from '@/ui/Button';
 import { Readout } from '@/ui/Readout';
 import { Slider } from '@/ui/Slider';
 import { CameraStage } from '@/modules/shared/CameraStage';
-import { AirCursorOverlay } from './AirCursorOverlay';
 import { CalibrationFlow } from './CalibrationFlow';
 import { useVisionTask } from '@/hooks/useVisionTask';
 import { useActiveGesture } from '@/hooks/useActiveGesture';
-import { useCursorEngine } from '@/hooks/useCursorEngine';
 import { useStoreSelector } from '@/hooks/useStore';
 import { appStore, updateSettings } from '@/state/appStore';
 import { visionStore } from '@/state/visionStore';
 import { interactionStore } from '@/state/interactionStore';
-import { formatGestureLabel } from '@/utils/format';
+import { formatGestureLabel, formatTrackingState } from '@/utils/format';
 
 const HAND_TASK = { hand: true, face: false, pose: false };
 
@@ -24,6 +22,12 @@ const HAND_TASK = { hand: true, face: false, pose: false };
  * link anywhere in AIR OS actually activates it. It can't move the OS
  * mouse or reach outside this page — no browser page can — but within
  * AIR OS it's the real thing.
+ *
+ * The engine itself and its on-screen overlay are mounted once, globally,
+ * by `AppShell` (`useGlobalAirCursor`) — not here — so the pointer keeps
+ * working after navigating away from this page (see CLAUDE.md finding
+ * #1). This module still acquires the hand task itself so its own
+ * readouts work if `AppShell`'s global acquisition were ever removed.
  */
 export default function CursorModule() {
   const [calibrating, setCalibrating] = useState(false);
@@ -34,14 +38,13 @@ export default function CursorModule() {
   const activeGesture = useActiveGesture();
 
   useVisionTask(HAND_TASK);
-  useCursorEngine();
 
   return (
     <div className="flex flex-col gap-6">
       <section>
         <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-[11px] text-ink-2">
           <span className="h-1.5 w-1.5 rounded-full bg-signal-400 animate-pulse-slow" />
-          Phase 4 — Air Cursor
+          Fingertip pointer · pinch to click or drag
         </div>
         <h1 className="mt-3 text-2xl font-medium text-ink-0">Air Cursor</h1>
         <p className="mt-1 max-w-xl text-sm text-ink-2">
@@ -75,7 +78,7 @@ export default function CursorModule() {
 
         <div className="flex flex-col gap-5">
           <Panel eyebrow="Cursor" title="Live State">
-            <Readout label="Tracking" value={trackingState} method="DERIVED" />
+            <Readout label="Tracking" value={formatTrackingState(trackingState)} method="DERIVED" />
             <Readout
               label="Gesture"
               value={
@@ -120,7 +123,6 @@ export default function CursorModule() {
         </div>
       </section>
 
-      <AirCursorOverlay />
       {calibrating && <CalibrationFlow onDone={() => setCalibrating(false)} />}
     </div>
   );

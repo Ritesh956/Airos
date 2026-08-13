@@ -78,9 +78,26 @@ export function FpsGraph() {
     ctx.fill();
   }, [history]);
 
+  // The one number on this chart that exists nowhere else in text — a
+  // plain <canvas> reports nothing to a screen reader (CLAUDE.md UI/UX
+  // audit finding #21), so summarize the same samples the line plots.
+  const latest = history.length > 0 ? Math.round(history[history.length - 1]!) : null;
+  const min = history.length > 0 ? Math.round(Math.min(...history)) : null;
+  const max = history.length > 0 ? Math.round(Math.max(...history)) : null;
+  const graphLabel =
+    latest !== null
+      ? `Frame rate history. Currently ${latest} frames per second, ranging from ${min} to ${max} over the last ${history.length} samples.`
+      : 'Frame rate history. No samples yet.';
+
   return (
     <div>
-      <canvas ref={canvasRef} className="w-full" style={{ height: GRAPH_HEIGHT }} />
+      <canvas
+        ref={canvasRef}
+        role="img"
+        aria-label={graphLabel}
+        className="w-full"
+        style={{ height: GRAPH_HEIGHT }}
+      />
       <div className="mt-2 flex items-center justify-between text-[10px] text-ink-3">
         <span>0 fps</span>
         <span className="flex items-center gap-3">

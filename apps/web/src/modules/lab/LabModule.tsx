@@ -14,7 +14,7 @@ import { useStoreSelector } from '@/hooks/useStore';
 import { appStore, updateSettings } from '@/state/appStore';
 import { visionStore } from '@/state/visionStore';
 import { interactionStore } from '@/state/interactionStore';
-import { formatGestureLabel } from '@/utils/format';
+import { formatGestureLabel, formatTrackingState } from '@/utils/format';
 
 /**
  * An interactive laboratory view of exactly what the tracking pipeline
@@ -46,7 +46,7 @@ export default function LabModule() {
       <section>
         <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-[11px] text-ink-2">
           <span className="h-1.5 w-1.5 rounded-full bg-signal-400 animate-pulse-slow" />
-          Phase 5 — Gesture Lab
+          Landmarks · gesture timeline · live FPS
         </div>
         <h1 className="mt-3 text-2xl font-medium text-ink-0">Gesture Lab</h1>
         <p className="mt-1 max-w-xl text-sm text-ink-2">
@@ -68,7 +68,7 @@ export default function LabModule() {
 
         <div className="flex flex-col gap-5">
           <Panel eyebrow="Pipeline" title="Live Readouts">
-            <Readout label="Tracking" value={trackingState} method="DERIVED" />
+            <Readout label="Tracking" value={formatTrackingState(trackingState)} method="DERIVED" />
             <Readout label="Hands tracked" value={vision.handsPresent} method="DERIVED" />
             {trackFace && (
               <Readout label="Face detected" value={vision.faceDetected ? 'Yes' : 'No'} method="DERIVED" />

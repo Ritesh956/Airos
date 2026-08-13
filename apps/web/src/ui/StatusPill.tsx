@@ -13,6 +13,7 @@ export function StatusPill({ state, className }: { state: CameraState; className
   const cfg = CONFIG[state];
   return (
     <span
+      role="status"
       className={cn(
         'inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-xs text-ink-1',
         className,

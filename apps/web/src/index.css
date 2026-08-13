@@ -121,4 +121,63 @@
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
+
+  /* ui/Slider.tsx's <input type="range">. `appearance: none` (needed to
+     paint our own track/thumb instead of the OS default) strips the
+     thumb entirely unless a replacement is defined for every engine's own
+     pseudo-element — this codebase had the first half without the second,
+     so every slider rendered as a flat, handle-less bar (CLAUDE.md's UI/UX
+     audit finding #2). The input's own box is 24px tall (WCAG 2.5.8's
+     minimum target size — see finding #7) while the *visual* track stays
+     a slim 6px, centered inside it; the thumb is sized and vertically
+     centered against that 6px track independently in each engine, since
+     WebKit and Gecko don't share one centering model. */
+  .slider-track {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    outline: none;
+  }
+
+  .slider-track::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--color-surface-3);
+  }
+  .slider-track::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -5px; /* (6px track - 16px thumb) / 2 — WebKit doesn't auto-center the thumb on the track. */
+    border-radius: 9999px;
+    background: var(--color-signal-500);
+    border: 2px solid var(--color-surface-1);
+    box-shadow: 0 0 0 1px var(--color-signal-500);
+    cursor: pointer;
+  }
+
+  .slider-track::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--color-surface-3);
+  }
+  .slider-track::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: var(--color-signal-500);
+    border: 2px solid var(--color-surface-1);
+    box-shadow: 0 0 0 1px var(--color-signal-500);
+    cursor: pointer;
+  }
+
+  .slider-track:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--color-signal-400);
+    outline-offset: 2px;
+  }
+  .slider-track:focus-visible::-moz-range-thumb {
+    outline: 2px solid var(--color-signal-400);
+    outline-offset: 2px;
+  }
 }

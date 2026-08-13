@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useActiveGesture } from '@/hooks/useActiveGesture';
 import { useLatestFingertipRef } from '@/hooks/useLatestFingertip';
+import { useModalDialog } from '@/hooks/useModalDialog';
 import { sanitizeReachBox, setReachBox } from '@/interaction/cursor/calibration';
 import { Button } from '@/ui/Button';
 
@@ -76,24 +77,38 @@ export function CalibrationFlow({ onDone }: { onDone: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGesture]);
 
+  // Enter-to-confirm is specific to this flow (a corner isn't a normal
+  // focusable control — it's wherever the tracked fingertip currently is),
+  // so it stays a separate effect; Escape/focus-trap/restore-focus/
+  // scroll-lock come from the same shared contract every dialog in the app
+  // uses (see useModalDialog's doc comment, CLAUDE.md UI/UX audit finding
+  // #26) — this overlay previously had none of the restore-focus or
+  // scroll-lock half of that contract.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Enter') confirmCorner();
-      if (event.key === 'Escape') onDone();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, firstCorner]);
 
+  const dialogRef = useModalDialog<HTMLDivElement>({ open: true, onClose: onDone });
+
   return createPortal(
-    <div className="fixed inset-0 z-[9998] flex flex-col items-center justify-center gap-6 bg-surface-0/90 backdrop-blur-sm">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="calibration-title"
+      className="fixed inset-0 z-[9998] flex flex-col items-center justify-center gap-6 bg-surface-0/90 backdrop-blur-sm"
+    >
       <div
         ref={markerRef}
         className="pointer-events-none absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-signal-400 opacity-0"
       />
       <div className="max-w-sm text-center">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-signal-400">
+        <p id="calibration-title" className="text-xs font-medium uppercase tracking-[0.18em] text-signal-400">
           Calibration · {step === 'top-left' ? '1 of 2' : '2 of 2'}
         </p>
         <p className="mt-2 text-sm text-ink-1">{STEP_COPY[step]}</p>

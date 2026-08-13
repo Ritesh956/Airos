@@ -32,6 +32,7 @@ export function Nav() {
             className={({ isActive }) =>
               cn(
                 'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
+                'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400',
                 isActive
                   ? 'bg-surface-3 text-ink-0'
                   : 'text-ink-2 hover:bg-surface-2 hover:text-ink-0',

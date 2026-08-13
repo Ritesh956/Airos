@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { useStore } from '@/hooks/useStore';
+import { useModalDialog } from '@/hooks/useModalDialog';
 import {
   presentStore,
   nextSlide,
@@ -42,23 +43,18 @@ export function SlideStage() {
   const legendCloseRef = useRef<HTMLButtonElement>(null);
   const legendTriggerRef = useRef<HTMLButtonElement>(null);
 
-  // Same Escape-to-close pattern CalibrationFlow.tsx uses for its overlay,
-  // plus focus moved onto the dialog when it opens and back to the button
-  // that opened it when it closes — the standard modal-dialog contract
-  // this overlay had none of before Phase 14's accessibility pass.
-  useEffect(() => {
-    if (!present.showLegend) return;
-    legendCloseRef.current?.focus();
-    const triggerToRestore = legendTriggerRef.current;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') toggleLegend();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      triggerToRestore?.focus();
-    };
-  }, [present.showLegend]);
+  // The standard modal-dialog contract (trap/Escape/restore-focus/
+  // scroll-lock), shared with CommandPalette and CalibrationFlow — see
+  // useModalDialog's doc comment (CLAUDE.md UI/UX audit finding #26). This
+  // overlay is small enough that the trap and the explicit close button
+  // are the only two focusable descendants, but it gets the same contract
+  // as every other dialog in the app rather than a hand-rolled subset of it.
+  const legendDialogRef = useModalDialog<HTMLDivElement>({
+    open: present.showLegend,
+    onClose: toggleLegend,
+    initialFocusRef: legendCloseRef,
+    restoreFocusRef: legendTriggerRef,
+  });
 
   return (
     <div className="relative flex h-full flex-col">
@@ -85,19 +81,26 @@ export function SlideStage() {
           <Button variant="secondary" size="sm" onClick={prevSlide} disabled={isFirst}>
             ← Prev
           </Button>
-          <div className="flex items-center gap-1.5 px-1">
+          <div className="flex items-center px-1">
             {SLIDES.map((s, i) => (
+              // The dot itself stays a slim 6px visual — the button around
+              // it is a full 24px hit target (WCAG 2.5.8), padding rather
+              // than growing the dot (CLAUDE.md UI/UX audit finding #7).
               <button
                 key={s.id}
                 type="button"
                 aria-label={`Go to slide ${i + 1}: ${s.title}`}
                 aria-current={i === present.slideIndex}
                 onClick={() => goToSlide(i)}
-                className={cn(
-                  'h-1.5 w-1.5 rounded-full transition-colors',
-                  i === present.slideIndex ? 'bg-signal-400' : 'bg-surface-3 hover:bg-surface-2',
-                )}
-              />
+                className="group flex h-6 w-6 shrink-0 items-center justify-center rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400"
+              >
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full transition-colors',
+                    i === present.slideIndex ? 'bg-signal-400' : 'bg-surface-3 group-hover:bg-surface-2',
+                  )}
+                />
+              </button>
             ))}
           </div>
           <Button variant="secondary" size="sm" onClick={nextSlide} disabled={isLast}>
@@ -131,6 +134,7 @@ export function SlideStage() {
       {present.showLegend && (
         <div className="absolute inset-0 flex items-center justify-center bg-surface-0/80 backdrop-blur-sm">
           <div
+            ref={legendDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="gesture-legend-title"

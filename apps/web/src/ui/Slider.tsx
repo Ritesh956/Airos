@@ -24,7 +24,7 @@ export function Slider({ label, description, value, min, max, step, onChange, fo
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-signal-500"
+        className="slider-track h-6 w-full cursor-pointer accent-signal-500"
       />
     </label>
   );

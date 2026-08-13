@@ -58,6 +58,11 @@ export interface AppSettings {
   showPoseSkeleton: boolean;
   reduceMotion: boolean;
   voiceEnabled: boolean;
+  /** Keeps the Air Cursor pointer (and the hand task it needs) live on
+   *  every route, not just /cursor — off by default so a fresh visitor's
+   *  first camera acquisition is still the explicit, single-purpose one
+   *  Air Cursor's own page describes. See Settings' "Air Cursor" panel. */
+  airCursorEverywhere: boolean;
 }
 
 /** The default reach box: the center 60% x 60% of the frame. */
@@ -74,6 +79,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showPoseSkeleton: true,
   reduceMotion: false,
   voiceEnabled: false,
+  airCursorEverywhere: false,
 };
 
 export interface AppState {

@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Nav } from './Nav';
@@ -9,7 +9,11 @@ import { useGlobalKeyboardCommands } from '@/hooks/useGlobalKeyboardCommands';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { usePerfDegradation } from '@/hooks/usePerfDegradation';
+import { useGlobalAirCursor } from '@/hooks/useGlobalAirCursor';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { DegradationBanner } from './DegradationBanner';
+import { SkipLink } from './SkipLink';
+import { AirCursorOverlay } from '@/modules/cursor/AirCursorOverlay';
 
 function ModuleFallback() {
   return (
@@ -22,11 +26,15 @@ function ModuleFallback() {
 export function AppShell() {
   const location = useLocation();
   const reduceMotion = useReducedMotion();
+  const mainRef = useRef<HTMLElement>(null);
+  const isFirstRender = useRef(true);
 
   useNavigationCommands();
   useGlobalKeyboardCommands();
   useVoiceCommands();
   usePerfDegradation();
+  useGlobalAirCursor();
+  useDocumentTitle();
 
   // Mirrors the combined OS-preference-or-Settings-toggle value onto
   // <html> so plain CSS keyframe animations (index.css's
@@ -38,13 +46,33 @@ export function AppShell() {
     document.documentElement.dataset.reduceMotion = String(reduceMotion);
   }, [reduceMotion]);
 
+  // Move focus to the new route's content on navigation — without this,
+  // focus silently stays on whatever nav link was clicked, and a screen
+  // reader gets no signal a route change happened at all (CLAUDE.md
+  // finding #6, paired with useDocumentTitle's per-route <title>). Skipped
+  // on first mount so landing on a deep link doesn't yank focus off the
+  // page the instant it loads.
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    mainRef.current?.focus();
+  }, [location.pathname]);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface-0 text-ink-0">
+      <SkipLink />
       <Nav />
       <div className="flex min-w-0 flex-1 flex-col">
         <StatusBar />
         <DegradationBanner />
-        <main className="flex-1 overflow-y-auto">
+        <main
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto outline-none"
+        >
           <div className="mx-auto w-full max-w-6xl px-6 py-8">
             <Suspense fallback={<ModuleFallback />}>
               {reduceMotion ? (
@@ -67,6 +95,7 @@ export function AppShell() {
         </main>
       </div>
       <CommandPalette />
+      <AirCursorOverlay />
     </div>
   );
 }

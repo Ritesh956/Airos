@@ -24,7 +24,10 @@ export function DegradationBanner() {
   if (!effects.recommendDemoMode) return null;
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-warning-500/30 bg-warning-500/10 px-5 py-2.5 text-xs text-ink-0">
+    <div
+      role="status"
+      className="flex items-center justify-between gap-4 border-b border-warning-500/30 bg-warning-500/10 px-5 py-2.5 text-xs text-ink-0"
+    >
       <div className="flex items-center gap-2.5">
         <WarningIcon className="h-4 w-4 shrink-0 text-warning-500" />
         <span>
@@ -35,7 +38,7 @@ export function DegradationBanner() {
       <div className="flex shrink-0 items-center gap-2">
         <Link
           to="/analytics"
-          className="text-ink-2 underline decoration-border underline-offset-4 hover:text-ink-0"
+          className="rounded outline-none text-ink-2 underline decoration-border underline-offset-4 hover:text-ink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400"
         >
           View perf panel
         </Link>

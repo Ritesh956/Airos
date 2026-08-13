@@ -6,6 +6,7 @@ import { useVisionTask } from '@/hooks/useVisionTask';
 import { useDrawEngine } from '@/hooks/useDrawEngine';
 import { useStore } from '@/hooks/useStore';
 import {
+  DRAW_COLOR_NAMES,
   DRAW_COLORS,
   MAX_BRUSH_SIZE,
   MIN_BRUSH_SIZE,
@@ -20,6 +21,7 @@ import { Panel } from '@/ui/Panel';
 import { Readout } from '@/ui/Readout';
 import { Button } from '@/ui/Button';
 import { Slider } from '@/ui/Slider';
+import { formatDateTime } from '@/utils/format';
 
 const HAND_TASK = { hand: true, face: false, pose: false };
 
@@ -58,6 +60,12 @@ export default function DrawModule() {
   const galleryRef = useRef<GalleryItem[]>([]);
   const [busy, setBusy] = useState<'save' | 'export' | null>(null);
   const [galleryError, setGalleryError] = useState<string | null>(null);
+  // A permanent IndexedDB delete had no confirmation at all (CLAUDE.md
+  // UI/UX audit finding #9) — Air Draw is otherwise careful about this
+  // exact hazard (`clear()` pushes onto the redo stack instead of
+  // discarding), so the gallery gets the same "ask before you can't undo
+  // it" treatment rather than a silent one-click delete.
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   const refreshGallery = useCallback(async () => {
     try {
@@ -115,6 +123,7 @@ export default function DrawModule() {
 
   const handleDeleteFromGallery = async (id: number) => {
     await deleteDrawing(id);
+    setPendingDeleteId(null);
     await refreshGallery();
   };
 
@@ -123,7 +132,7 @@ export default function DrawModule() {
       <section>
         <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-[11px] text-ink-2">
           <span className="h-1.5 w-1.5 rounded-full bg-signal-400 animate-pulse-slow" />
-          Phase 7 — Air Draw
+          Fingertip brush · pinch to draw, fist to erase
         </div>
         <h1 className="mt-3 text-2xl font-medium text-ink-0">Air Draw</h1>
         <p className="mt-1 max-w-xl text-sm text-ink-2">
@@ -148,7 +157,7 @@ export default function DrawModule() {
                 <button
                   key={color}
                   type="button"
-                  aria-label={`Use color ${color}`}
+                  aria-label={`Use colour ${DRAW_COLOR_NAMES[color] ?? color}`}
                   aria-pressed={draw.color === color}
                   onClick={() => setDrawColor(color)}
                   className="h-7 w-7 rounded-full border-2 transition-transform"
@@ -194,29 +203,68 @@ export default function DrawModule() {
                 {busy === 'save' ? 'Saving…' : 'Save to Gallery'}
               </Button>
             </div>
-            {galleryError && <p className="mt-3 text-xs text-danger-500">{galleryError}</p>}
+            {galleryError && (
+              <p role="alert" className="mt-3 text-xs text-danger-500">
+                {galleryError}
+              </p>
+            )}
             {gallery.length > 0 && (
               <div className="mt-4 grid grid-cols-3 gap-2">
-                {gallery.map((item) => (
-                  <div key={item.id} className="group relative overflow-hidden rounded-lg border border-border">
-                    <img src={item.url} alt="Saved drawing" className="aspect-square w-full object-contain bg-surface-1" />
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteFromGallery(item.id)}
-                      aria-label="Delete drawing"
-                      className="absolute right-1 top-1 rounded-md bg-surface-0/80 px-1.5 py-0.5 text-[10px] text-ink-2 opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger-500"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
+                {gallery.map((item) => {
+                  const savedAt = formatDateTime(item.createdAt);
+                  const confirming = pendingDeleteId === item.id;
+                  return (
+                    <div key={item.id} className="group relative overflow-hidden rounded-lg border border-border">
+                      <img
+                        src={item.url}
+                        alt={`Drawing saved ${savedAt}`}
+                        className="aspect-square w-full object-contain bg-surface-1"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 truncate bg-surface-0/80 px-1.5 py-1 text-[10px] text-ink-3">
+                        {savedAt}
+                      </div>
+                      {confirming ? (
+                        <div className="absolute right-1 top-1 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteFromGallery(item.id)}
+                            className="rounded-md bg-danger-500/90 px-1.5 py-0.5 text-[10px] font-medium text-surface-0 outline-none transition-colors hover:bg-danger-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400"
+                          >
+                            Delete?
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteId(null)}
+                            aria-label="Cancel delete"
+                            className="rounded-md bg-surface-0/80 px-1.5 py-0.5 text-[10px] text-ink-2 outline-none transition-colors hover:text-ink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setPendingDeleteId(item.id)}
+                          aria-label={`Delete drawing saved ${savedAt}`}
+                          className="absolute right-1 top-1 rounded-md bg-surface-0/80 px-1.5 py-0.5 text-[10px] text-ink-2 opacity-0 outline-none transition-opacity hover:text-danger-500 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400 group-hover:opacity-100 group-focus-within:opacity-100"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </Panel>
         </div>
 
-        <Panel eyebrow="Canvas" title="Air Draw" padded={false} className="overflow-hidden">
-          <div style={{ height: 560 }}>
+        <Panel eyebrow="Canvas" title="Drawing Surface" padded={false} className="overflow-hidden">
+          {/* aspect-square + max-h, not a fixed 560px — at narrow viewports a
+              flat height forced a tall, narrow strip that distorted anything
+              drawn on a wider screen, since strokes are stored normalized
+              (CLAUDE.md UI/UX audit finding #24). */}
+          <div className="aspect-square max-h-[560px] w-full">
             <DrawCanvas ref={canvasHandleRef} />
           </div>
         </Panel>

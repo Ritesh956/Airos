@@ -43,7 +43,7 @@ export default function GameModule() {
       <section>
         <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-[11px] text-ink-2">
           <span className="h-1.5 w-1.5 rounded-full bg-signal-400 animate-pulse-slow" />
-          Phase 12 — Game Mode
+          Point to steer · pinch to fire · palm to shield
         </div>
         <h1 className="mt-3 text-2xl font-medium text-ink-0">Game Mode</h1>
         <p className="mt-1 max-w-xl text-sm text-ink-2">
@@ -106,8 +106,10 @@ export default function GameModule() {
           </Panel>
         </div>
 
-        <Panel eyebrow="Arena" title="Game Mode" padded={false} className="overflow-hidden">
-          <div className="relative" style={{ height: 560 }}>
+        <Panel eyebrow="Arena" title="Playfield" padded={false} className="overflow-hidden">
+          {/* aspect-square + max-h, not a fixed 560px — see DrawModule's
+              identical fix (CLAUDE.md UI/UX audit finding #24). */}
+          <div className="relative aspect-square max-h-[560px] w-full">
             <GameCanvas />
             {game.status !== 'playing' && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface-0/70 text-center backdrop-blur-sm">

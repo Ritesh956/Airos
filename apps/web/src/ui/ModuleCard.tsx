@@ -9,6 +9,7 @@ export function ModuleCard({ module }: { module: ModuleDescriptor }) {
       to={module.path}
       className={cn(
         'group glass-panel flex flex-col gap-4 rounded-2xl p-5 transition-all duration-200',
+        'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400',
         'hover:border-border-strong hover:bg-surface-3/60',
       )}
     >

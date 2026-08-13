@@ -15,11 +15,23 @@ const KEYBOARD_MOVE_SPEED = 0.9; // normalized units/sec while an arrow key is h
 // Same guard useGlobalKeyboardCommands.ts uses — without it, typing a space
 // or an arrow key into the Command Palette's search box (or any other
 // input on the page) would also fire/steer the ship out from under the
-// user.
+// user. Extended past that original set (CLAUDE.md UI/UX audit finding
+// #3): the game keys were previously captured on `window` unconditionally,
+// so Space/ArrowLeft/ArrowRight stopped working on every button, link, and
+// switch on the whole page while this module was mounted — including the
+// module's own Start/Pause/Restart buttons and the Demo Mode toggle.
+// Interactive roles are included for the same reason as the tag list: a
+// `role="switch"` button (ui/Toggle.tsx) doesn't match any tag here but is
+// just as much "the user is operating a control, not steering."
 const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+const INTERACTIVE_TAGS = new Set(['BUTTON', 'A']);
+const INTERACTIVE_ROLES = new Set(['switch', 'option', 'tab', 'menuitem', 'checkbox', 'radio']);
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return EDITABLE_TAGS.has(target.tagName) || target.isContentEditable;
+  if (EDITABLE_TAGS.has(target.tagName) || target.isContentEditable) return true;
+  if (INTERACTIVE_TAGS.has(target.tagName)) return true;
+  const role = target.getAttribute('role');
+  return role !== null && INTERACTIVE_ROLES.has(role);
 }
 
 /** A handful of fixed pseudo-random star positions, generated once — a
@@ -170,7 +182,14 @@ export function GameCanvas({ className }: { className?: string }) {
     const onClick = () => gameApi.fire();
     const onKeyDown = (event: KeyboardEvent) => {
       if (isEditableTarget(event.target)) return;
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') keysHeld.add(event.key);
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        // Without this, the same arrow press both steers the ship and
+        // scrolls the page — the canvas sits above three panels, so
+        // playing with the keyboard would drag itself out of view
+        // (CLAUDE.md UI/UX audit finding #4).
+        event.preventDefault();
+        keysHeld.add(event.key);
+      }
       if (event.key === 'Shift') shiftHeld = true;
       if (event.key === ' ' && !event.repeat) {
         event.preventDefault();
@@ -201,6 +220,8 @@ export function GameCanvas({ className }: { className?: string }) {
   return (
     <canvas
       ref={canvasRef}
+      role="img"
+      aria-label="Game arena. Move the mouse, or point in the air over the camera, to steer; click or pinch to fire."
       className={cn('h-full w-full cursor-crosshair touch-none bg-[#05070d]', className)}
     />
   );
