@@ -247,7 +247,12 @@ Presentation module that drives a slide deck off swipes (next/previous),
 THUMBS_UP/FIST (timer start/pause), and OPEN_PALM (a gesture-legend
 toggle) — the first module needing no per-frame hand-position tracking at
 all, just the gesture classifications every other module already
-publishes. The remaining module (`Game Mode`) and `Analytics` are real,
+publishes — and Gesture Lab's opt-in Pose Landmarker toggle drawing a
+33-point body skeleton plus four DERIVED elbow/knee joint-angle readouts
+(`vision/pose/poseAngles.ts`, reusing the same angle-between-three-points
+math the gesture engine uses for finger curl) — tracking plus one small,
+literal arithmetic step on top, per Phase 10's gate. The remaining module
+(`Game Mode`) and `Analytics` are real,
 navigable routes that render `ui/ModulePlaceholder.tsx` — an honest "not
 built yet, here's what's planned and in which phase" screen, not a fake
 button that pretends to do something. See IMPLEMENTATION.md §11 for the

@@ -15,9 +15,10 @@ decision — start there.
 
 ## Current status
 
-**Phases 1–9 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
+**Phases 1–10 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
 Air Cursor, Gesture Lab, 3D Studio, Air Draw, Presentation, Face
-Tracking** — complete. See IMPLEMENTATION.md §11 for the full phase plan.
+Tracking, Pose Tracking** — complete. See IMPLEMENTATION.md §11 for the
+full phase plan.
 
 Working today: the app shell, routing, the design system, the camera
 lifecycle (start/stop/error handling, verified against the OS camera

@@ -49,6 +49,9 @@ export interface AppSettings {
   /** Gesture Lab's face-mesh overlay (Phase 9) — a separate toggle from
    *  the hand skeleton's since a viewer may want one without the other. */
   showFaceMesh: boolean;
+  /** Gesture Lab's pose-skeleton overlay (Phase 10) — same independent-
+   *  toggle reasoning as showFaceMesh. */
+  showPoseSkeleton: boolean;
   reduceMotion: boolean;
   voiceEnabled: boolean;
 }
@@ -64,6 +67,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showSkeletonOverlay: true,
   showDebugOverlay: false,
   showFaceMesh: true,
+  showPoseSkeleton: true,
   reduceMotion: false,
   voiceEnabled: false,
 };

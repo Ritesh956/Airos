@@ -2,7 +2,15 @@ import { cameraManager } from '@/vision/camera/CameraManager';
 import { appStore } from '@/state/appStore';
 import { detectHands, preloadHandLandmarker } from '@/vision/hand/HandLandmarkerService';
 import { detectFace, preloadFaceLandmarker } from '@/vision/face/FaceLandmarkerService';
-import { NO_TASKS, type FaceObservation, type HandObservation, type VisionFrame, type VisionTaskRequest } from '@/vision/types';
+import { detectPose, preloadPoseLandmarker } from '@/vision/pose/PoseLandmarkerService';
+import {
+  NO_TASKS,
+  type FaceObservation,
+  type HandObservation,
+  type PoseObservation,
+  type VisionFrame,
+  type VisionTaskRequest,
+} from '@/vision/types';
 import type { LandmarkSource } from './LandmarkSource';
 
 type LoopHandle = { kind: 'vfc'; id: number; video: HTMLVideoElement } | { kind: 'raf'; id: number } | null;
@@ -39,6 +47,7 @@ export class CameraLandmarkSource implements LandmarkSource {
       void preloadHandLandmarker();
     }
     if (tasks.face) void preloadFaceLandmarker();
+    if (tasks.pose) void preloadPoseLandmarker();
 
     this.unsubscribeAppStore = appStore.subscribe(() => this.syncWithCameraState());
     this.syncWithCameraState();
@@ -48,6 +57,7 @@ export class CameraLandmarkSource implements LandmarkSource {
     this.tasks = tasks;
     if (tasks.hand) void preloadHandLandmarker();
     if (tasks.face) void preloadFaceLandmarker();
+    if (tasks.pose) void preloadPoseLandmarker();
   }
 
   stop(): void {
@@ -97,6 +107,7 @@ export class CameraLandmarkSource implements LandmarkSource {
     const frameStart = performance.now();
     let hands: HandObservation[] = [];
     let face: FaceObservation | null = null;
+    let pose: PoseObservation | null = null;
     let inferenceMs = 0;
 
     if (this.tasks.hand) {
@@ -109,12 +120,17 @@ export class CameraLandmarkSource implements LandmarkSource {
       face = result.face;
       inferenceMs += result.inferenceMs;
     }
+    if (this.tasks.pose) {
+      const result = await detectPose(video, Math.round(frameStart));
+      pose = result.pose;
+      inferenceMs += result.inferenceMs;
+    }
 
     const frame: VisionFrame = {
       timestamp: frameStart,
       hands,
       face,
-      pose: null,
+      pose,
       timings: { inferenceMs, totalMs: performance.now() - frameStart },
       source: 'camera',
     };

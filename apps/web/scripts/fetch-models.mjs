@@ -36,7 +36,7 @@ const WASM_SUBPATHS = [
 
 const MODELS = [
   {
-    // Hand Landmarker — Phase 2. Pose model is added in Phase 10.
+    // Hand Landmarker — Phase 2.
     name: 'hand_landmarker.task',
     url: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task',
   },
@@ -44,6 +44,16 @@ const MODELS = [
     // Face Landmarker — Phase 9. Same bucket layout as hand_landmarker.
     name: 'face_landmarker.task',
     url: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task',
+  },
+  {
+    // Pose Landmarker — Phase 10. Unlike hand/face, this task ships three
+    // size variants (lite/full/heavy); `lite` is used here — see
+    // PoseLandmarkerService.ts's doc comment for why (this is the third
+    // MediaPipe task run in the same frame, and the performance budget in
+    // IMPLEMENTATION.md §9 has no headroom to spend on accuracy beyond what
+    // the joint-angle readouts actually need).
+    name: 'pose_landmarker.task',
+    url: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
   },
 ];
 

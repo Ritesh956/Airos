@@ -23,7 +23,7 @@ split, why three stores, the Interaction Engine),
 code — each documents real thresholds and real bugs found while building, not
 just design intent.
 
-## Status: Phases 1–9 complete. Resume at Phase 10 (Pose tracking).
+## Status: Phases 1–10 complete. Resume at Phase 11 (Voice + Command Center).
 
 | # | Phase | Status |
 |---|---|---|
@@ -36,8 +36,8 @@ just design intent.
 | 7 | Air Draw | ✅ done |
 | 8 | Presentation | ✅ done |
 | 9 | Face tracking | ✅ done |
-| **10** | **Pose tracking** | **← start here** |
-| 11 | Voice + Command Center | pending |
+| 10 | Pose tracking | ✅ done |
+| **11** | **Voice + Command Center** | **← start here** |
 | 12 | Game Mode | pending |
 | 13 | Analytics + Perf | pending |
 | 14 | Polish | pending |
@@ -397,37 +397,119 @@ sees") rather than a tenth nav item. Composed from:
 entire time (still describing gesture classification as "Phase 3 — not
 yet built"), got a real refresh this phase, not just a Phase 9 addendum.
 
-## How to resume: Phase 10, Pose tracking
+## Phase 10 shipped: Pose tracking
 
-No placeholder exists yet for this phase either — same shape as Phase 9,
-a new capability (`PoseLandmarker`) behind the existing `VisionEngine`/
-`LandmarkSource` pair rather than a new module route. Check
-IMPLEMENTATION.md §11's phase table (`PoseLandmarker, skeleton, joint
-angles`) and the repo layout's `vision/pose/` entry (§2).
+Same shape as Phase 9: no new module route, no new placeholder — a new
+capability (`PoseLandmarker`) behind the existing `VisionEngine`/
+`LandmarkSource` pair, surfaced inside Gesture Lab via another opt-in
+"Track" toggle. Composed from:
+- `vision/pose/PoseLandmarkerService.ts` — a lazy singleton
+  `PoseLandmarker`, structurally identical to
+  `FaceLandmarkerService.ts`/`HandLandmarkerService.ts`.
+  `outputSegmentationMasks` stays unset for the same "unset, not
+  requested-and-ignored" reason Phase 9 left face blendshapes unset —
+  nothing in this phase renders a segmentation mask. Uses the `lite`
+  model variant (not `full`/`heavy`): this is the third MediaPipe task
+  that can run in the same frame alongside hand (and optionally face)
+  detection, and IMPLEMENTATION.md §9's performance budget has no
+  headroom to spend on pose accuracy beyond what the joint-angle readouts
+  actually need.
+- `vision/pose/poseAngles.ts` — `computePoseAngles()`, DERIVED arithmetic
+  on MODEL landmark positions computing left/right elbow and knee angles
+  in degrees. Reuses `jointAngle()` from `gestures/geometry.ts` verbatim
+  (the exact same angle-between-three-points math already used for finger
+  curl) rather than reimplementing it, applied to the
+  shoulder-elbow-wrist and hip-knee-ankle triples instead of finger
+  joints. Pure and directly unit-tested (`poseAngles.test.ts`) with
+  synthetic landmark triples at known angles (collinear → 180°,
+  perpendicular → 90°) — this is the literal computation Phase 10's gate
+  ("angles correct vs. manual check") verifies.
+- `vision/pose/PoseSkeletonOverlay.tsx` — structurally identical to
+  `HandSkeletonOverlay.tsx`/`FaceMeshOverlay.tsx` (same hot-path
+  subscription bypassing the throttled store, same mirroring, same
+  bug-#9 tracking-loss clear). Draws every
+  `PoseLandmarker.POSE_CONNECTIONS` edge — pose has no "too dense to
+  read" problem at only 33 points, so unlike the face overlay there's no
+  subset curation needed.
+- `vision/replay/poseSkeleton.ts` — Demo Mode's synthetic standing
+  figure. Judged fresh rather than reusing `faceMesh.ts`'s
+  `walkConnectionsIntoLoops` machinery on reflex, per the note this
+  section used to carry: MediaPipe's pose landmarks are a small, fixed,
+  well-documented 33-point topology (BlazePose), so "which index is the
+  left elbow" is a known constant, not something worth deriving from the
+  connection graph the way face's ~150 densely-packed contour indices
+  were. All 33 points are hand-placed for a static standing pose; only
+  the right elbow animates, sweeping smoothly between two deliberately
+  verifiable extremes — a fully straight arm (180°) and a forearm folded
+  perpendicular to the upper arm (90°) — rather than an arbitrary
+  naturalistic gesture that would be hard to check by eye.
+  `poseSkeleton.test.ts` asserts both extremes land at the calibrated
+  values, in the spirit of bug #6 (a fixture that demos its own claimed
+  behavior, not just looks plausible).
+- `modules/lab/LabModule.tsx` — a "Track pose" toggle (same opt-in
+  pattern as Phase 9's "Track face") drives `useVisionTask`'s `pose`
+  field; a "Pose skeleton overlay" toggle (`AppSettings.showPoseSkeleton`)
+  controls only the visualization, independent of detection — same
+  independent-toggle split Phase 9 established for the face mesh. Four
+  new DERIVED Readouts (left/right elbow, left/right knee angle) render
+  only while pose tracking is on.
+- `vision/engine/CameraLandmarkSource.ts` — `detectPose` now runs
+  alongside `detectHands`/`detectFace` in the same `tick()`, gated by
+  `tasks.pose` independently, inference time summed into the same
+  `timings.inferenceMs`. `vision/replay/fixtures.ts`'s `buildFrame` now
+  always populates `pose` too (same "always populated, `ReplaySource`
+  strips it back to null per-task" pattern the face fixture already
+  used).
+- `apps/web/scripts/fetch-models.mjs` — `pose_landmarker_lite.task`
+  added, fetched from the same Google model-hosting bucket layout as
+  hand/face (this task ships lite/full/heavy variants; lite chosen for
+  the performance-budget reason above).
 
-**Gate for this phase**: *"Angles correct vs. manual check."* Unlike
-Phase 9's "don't compute anything," this phase's whole deliverable *is* a
-derived computation (joint angles) — so the manual verification step
-means literally measuring a real joint angle by eye/protractor against
-what the app reports, not just confirming the skeleton renders.
+Manually verified live in a real (non-sandboxed) browser tab: Demo Mode's
+right-elbow angle read 180° at rest and swung down through the 140s into
+the 100s as the fixture animated, visually matching the rendered skeleton
+bend at each sample; left elbow held at 180° and both knees at ~177°
+throughout, exactly as the fixture's static half is built. Turning "Track
+pose" off cleanly cleared both the skeleton overlay and all four angle
+Readouts with no ghost frame — confirming the bug #8/#9 staleness
+discipline holds for a third tracking task without needing any new
+reset-path code (pose piggybacks on the same `trackingState`/
+`visionStore.poseDetected` plumbing hand and face already established).
+No new bug classes found this phase — every piece of machinery it needed
+(`VisionTaskRequest.pose`, `ReplaySource`'s per-task gating,
+`ARCHITECTURE.md`'s hot/cold path split) already existed from Phase 1/9
+and needed no changes, only a third instance plugged in.
 
-Reuse checklist: `VisionTaskRequest.pose` already exists and is already
-plumbed through `VisionEngine`'s union-of-tasks logic and
-`ReplaySource`'s per-task gating — see how Phase 9 turned on `face`
-without touching either of those files, `pose` is the same shape. Follow
-`FaceLandmarkerService.ts`/`FaceMeshOverlay.tsx` as the template
-(`PoseLandmarkerService.ts` + a `PoseSkeletonOverlay.tsx`), and reuse
-`vision/replay/faceMesh.ts`'s `walkConnectionsIntoLoops` approach if
-`PoseLandmarker.POSE_CONNECTIONS` needs the same synthetic-fixture
-treatment — pose has far fewer landmarks (33) than a face (478), so
-hand-placing them without the topology-walk trick may honestly be simpler
-this time; judge it fresh rather than reusing the machinery on reflex.
-Joint-angle computation itself is DERIVED arithmetic on MODEL landmark
-positions (`jointAngle()` in `gestures/geometry.ts` is the exact same math
-already used for finger-curl detection) — reuse it rather than
-reimplementing angle-between-three-points. No open questions parked for
-this phase in IMPLEMENTATION.md §13.
+**A verification-tooling note, not a code bug**: the sandboxed
+browser-automation pane used for earlier phases' checks had
+`document.hidden === true` for this entire session (confirmed via
+`javascript_exec`), which silently pauses every `requestAnimationFrame`
+loop in the app (`ReplaySource`'s tick loop included) — exactly the
+"Process notes" section below already warns about. Demo Mode looked
+completely inert through that pane (Tracking stuck on `idle` indefinitely
+regardless of wait time) even though nothing was wrong. Switching to a
+real, visible Chrome tab (via the Claude-in-Chrome browser-automation
+surface rather than the sandboxed preview pane) immediately showed
+correct, live behavior. Worth remembering as a concrete instance of that
+existing note, not a new lesson.
 
+`moduleRegistry.tsx` needed no changes — Pose tracking, like Face
+tracking, isn't a module route.
+
+## How to resume: Phase 11, Voice + Command Center
+
+Check IMPLEMENTATION.md §11's phase table and §8 (`interaction/commands/
+CommandRouter.ts` already exists and is already the funnel keyboard
+commands go through — every module's `use*KeyboardCommands.ts` hook
+registers into it today). This phase's job is adding the other input
+modality the router was always designed for: the Web Speech API (voice),
+dispatched through `CommandRouter.dispatchPhrase()` per §8's "no
+component hard-codes a voice string, ever" rule. `appStore.commandPaletteOpen` and
+`AppSettings.voiceEnabled` already exist, and `app/shell/CommandPalette.tsx`
+is already a real, wired-up component (check what it currently does —
+likely keyboard/click dispatch only, with no voice input yet) rather than
+a placeholder to build from scratch. No open questions parked for this
+phase in IMPLEMENTATION.md §13.
 ## Architecture quick-reference (see docs/ARCHITECTURE.md for full detail)
 
 - **Three state stores**: `appStore` (module/camera/settings, user-driven),
@@ -469,7 +551,7 @@ this phase in IMPLEMENTATION.md §13.
 ```bash
 npm run typecheck   # tsc -b across all 3 workspaces
 npm run lint        # eslint, includes the boundaries rule
-npm run test:run    # vitest run — 152 tests as of end of Phase 9
+npm run test:run    # vitest run — 162 tests as of end of Phase 10
 npm run build       # tsc + vite build, all 3 workspaces
 ```
 Run all four before considering any phase done. `npm run dev` (or the
@@ -686,7 +768,9 @@ if you don't know to watch for it.
   regression. If a fix genuinely isn't taking effect after a normal
   reload, a full dev-server restart (not just `location.reload()`) is a
   cheap thing to try before assuming your code is wrong.
-- `IMPLEMENTATION.md` and `README.md` both have a "Status" line near the
-  top that should be updated at the end of each phase (currently say
-  "Phases 1–6 complete"). Keep them in sync — they're the first thing a
-  reader (or a future session) checks.
+- `IMPLEMENTATION.md` and `README.md` both have a status line near the
+  top that should be updated at the end of each phase (both correctly say
+  "Phases 1–10 complete" as of this phase — they drifted out of sync for
+  several phases in a row before being caught and corrected here). Keep
+  them in sync — they're the first thing a reader (or a future session)
+  checks.

@@ -1,8 +1,8 @@
 # Computer Vision
 
-> **Status: hand tracking (Phase 2) and face tracking (Phase 9)
-> implemented.** Pose tracking is still Phase 10 — see IMPLEMENTATION.md
-> §11. This document describes what's actually in the codebase today.
+> **Status: hand tracking (Phase 2), face tracking (Phase 9), and pose
+> tracking (Phase 10) are all implemented.** This document describes what's
+> actually in the codebase today.
 
 ## What AIR OS uses, and why
 
@@ -17,16 +17,18 @@ Principle".
 
 Currently wired up: the **Hand Landmarker** — 21 3D landmarks per hand, up
 to 2 hands, plus a handedness (left/right) classification and a
-per-detection confidence score — and the **Face Landmarker** — up to 478
-3D landmarks for a single face (`numFaces: 1`; this is a single-user tool,
-not a room-scanning one). Pose Landmarker follows in Phase 10, reusing the
-same `VisionEngine`/`LandmarkSource` machinery both of these already do.
+per-detection confidence score — the **Face Landmarker** — up to 478 3D
+landmarks for a single face (`numFaces: 1`; this is a single-user tool,
+not a room-scanning one) — and the **Pose Landmarker** — 33 3D landmarks
+for a single body (`numPoses: 1`, `lite` model variant), reusing the same
+`VisionEngine`/`LandmarkSource` machinery the other two already use.
 
 ## Where the model files live
 
 `@mediapipe/tasks-vision`'s WASM runtime (~30MB across its SIMD/non-SIMD/
-module variants), the Hand Landmarker model (~8MB), and the Face Landmarker
-model (~4MB) are vendored into `apps/web/public/models/` rather than loaded
+module variants), the Hand Landmarker model (~8MB), the Face Landmarker
+model (~4MB), and the Pose Landmarker `lite` model (~5.8MB) are vendored
+into `apps/web/public/models/` rather than loaded
 from a third-party CDN at runtime — self-hosted, so the app doesn't depend
 on Google's CDN being reachable in production. These are large, slow-
 changing binaries, so they're **not committed to git**:
@@ -44,17 +46,24 @@ Video frame (from CameraLandmarkSource, or a fixture from ReplaySource)
   -> HandObservation[]                         MODEL — landmarks + handedness
   -> FaceLandmarker.detectForVideo()          [vision/face/FaceLandmarkerService.ts]
   -> FaceObservation | null                    MODEL — landmarks only, see below
+  -> PoseLandmarker.detectForVideo()          [vision/pose/PoseLandmarkerService.ts]
+  -> PoseObservation | null                    MODEL — landmarks only, see below
   -> VisionFrame                               [vision/types.ts]
   -> VisionEngine.handleFrame()                [vision/engine/VisionEngine.ts]
-       -> visionStore (throttled ~10Hz)         cold path — FPS, hand/face presence, text UI
-       -> direct subscribers                    hot path — HandSkeletonOverlay/FaceMeshOverlay, per frame
+       -> visionStore (throttled ~10Hz)         cold path — FPS, hand/face/pose presence, text UI
+       -> direct subscribers                    hot path — Hand/Face/PoseSkeletonOverlay, per frame
 ```
 
-Both landmarkers run against the same video frame and timestamp, gated
-independently by `VisionTaskRequest.hand`/`.face` — a module that only
-acquires `{ hand: true }` never pays for face inference at all (see "Task
-subscription" below). Gesture classification (turning hand landmarks into
-PINCH/FIST/etc.) is `gestures/` — see `docs/GESTURES.md`.
+All three landmarkers run against the same video frame and timestamp,
+gated independently by `VisionTaskRequest.hand`/`.face`/`.pose` — a module
+that only acquires `{ hand: true }` never pays for face or pose inference
+at all (see "Task subscription" below). Gesture classification (turning
+hand landmarks into PINCH/FIST/etc.) is `gestures/` — see
+`docs/GESTURES.md`. Pose's joint-angle computation
+(`vision/pose/poseAngles.ts`) is a much smaller cousin of that: DERIVED
+arithmetic on MODEL landmark positions, not a classifier, computed on
+demand by whatever reads it rather than published into `VisionFrame`
+itself.
 
 ## Face Landmarker: tracking only, by design
 
@@ -79,6 +88,37 @@ since the MediaPipe API makes the opposite choice easy to reach for:
 - `numFaces: 1` — this is a single-user tool throughout, not a
   room-scanning one, matching the framing everywhere else in the app.
 
+## Pose Landmarker: 33 landmarks, and the one derived computation
+
+Phase 10's gate is different in kind from Phase 9's: *"Angles correct vs.
+manual check."* Face tracking's gate forbade computing anything beyond
+raw landmark positions; pose tracking's whole deliverable **is** a
+derived computation on top of them — joint angles — so this phase adds
+exactly one small piece of arithmetic rather than staying purely
+tracking-only:
+
+- `vision/pose/PoseLandmarkerService.ts` mirrors
+  `FaceLandmarkerService.ts`'s structure (lazy singleton, `numPoses: 1`
+  — single-user throughout). `outputSegmentationMasks` stays unset for
+  the same "unset, not requested-and-ignored" reason face blendshapes
+  are unset — no background-removal/body-cutout feature exists anywhere
+  to consume a mask. Uses the `lite` model variant (MediaPipe ships
+  lite/full/heavy): this is the third task that can run in the same
+  frame as hand and face detection, and the performance budget
+  (IMPLEMENTATION.md §9) has no room to spend on accuracy the angle
+  readouts don't need.
+- `vision/pose/poseAngles.ts`'s `computePoseAngles()` is the one derived
+  value: left/right elbow and knee angles in degrees, via `jointAngle()`
+  from `gestures/geometry.ts` — the identical angle-between-three-points
+  math the gesture engine already uses for finger-curl detection, reused
+  rather than reimplemented. It's a pure function of a `PoseObservation`,
+  called on demand by whatever reads it (`hooks/usePoseAngles.ts`), not
+  published as part of `VisionFrame`.
+- `vision/pose/PoseSkeletonOverlay.tsx` draws every
+  `PoseLandmarker.POSE_CONNECTIONS` edge — at only 33 points, pose has
+  none of the face mesh's "too dense to read" problem, so unlike
+  `FaceMeshOverlay.tsx` there's no subset curation.
+
 ## Demo Mode's face fixture: real topology, synthetic positions
 
 `vision/replay/faceMesh.ts` generates a synthetic face for Demo Mode, and
@@ -96,6 +136,23 @@ A gentle blink and mouth-open pulse animate over time, independent of
 whatever the synthetic hand is doing — purely synthetic landmark movement,
 never displayed as a "blinking" or "talking" claim anywhere, for the same
 reason the real service never requests blendshapes.
+
+## Demo Mode's pose fixture: hand-placed, not topology-walked
+
+`vision/replay/poseSkeleton.ts` generates a synthetic standing figure for
+Demo Mode, but deliberately doesn't reuse `walkConnectionsIntoLoops` —
+MediaPipe's 33-point BlazePose topology is small and fixed (indices like
+"left elbow" or "right knee" are known constants, unlike a face's ~150
+densely-packed contour indices), so hand-placing them directly was judged
+simpler than deriving positions from the connection graph. All 33 points
+are placed for a static standing pose; only the right elbow animates,
+smoothly sweeping between two deliberately verifiable extremes — a fully
+straight arm (180°) and a forearm folded perpendicular to the upper arm
+(90°) — rather than an arbitrary gesture that would be hard to check by
+eye. `poseSkeleton.test.ts` asserts both extremes land at the calibrated
+angle, the same "prove the fixture actually demos its claimed behavior"
+discipline `fixtures.test.ts` established for the hand fixture (see
+CLAUDE.md bug #6).
 
 ## Task subscription — the actual API
 
@@ -188,7 +245,9 @@ project's phase gate, not an optional step.
 
 ## What's next
 
-Phase 10 (Pose tracking) adds `PoseLandmarker` behind this same
-`LandmarkSource`/`VisionEngine` pair — no architectural changes expected,
-same as Face Landmarker needed none in Phase 9. `docs/GESTURES.md`
-documents how hand landmarks become named gestures.
+All three MediaPipe tasks this project uses (hand, face, pose) are now
+wired up; Phase 11 (Voice + Command Center) adds a fourth input modality
+that isn't computer vision at all — the Web Speech API, dispatched through
+the existing `CommandRouter` (see IMPLEMENTATION.md §8) — so no changes
+are expected in this file. `docs/GESTURES.md` documents how hand
+landmarks become named gestures.
