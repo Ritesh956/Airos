@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useStore } from '@/hooks/useStore';
 import {
   presentStore,
@@ -37,6 +38,27 @@ export function SlideStage() {
   const slide = SLIDES[present.slideIndex]!;
   const isFirst = present.slideIndex === 0;
   const isLast = present.slideIndex === SLIDES.length - 1;
+
+  const legendCloseRef = useRef<HTMLButtonElement>(null);
+  const legendTriggerRef = useRef<HTMLButtonElement>(null);
+
+  // Same Escape-to-close pattern CalibrationFlow.tsx uses for its overlay,
+  // plus focus moved onto the dialog when it opens and back to the button
+  // that opened it when it closes — the standard modal-dialog contract
+  // this overlay had none of before Phase 14's accessibility pass.
+  useEffect(() => {
+    if (!present.showLegend) return;
+    legendCloseRef.current?.focus();
+    const triggerToRestore = legendTriggerRef.current;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') toggleLegend();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      triggerToRestore?.focus();
+    };
+  }, [present.showLegend]);
 
   return (
     <div className="relative flex h-full flex-col">
@@ -100,7 +122,7 @@ export function SlideStage() {
           <Button variant="ghost" size="sm" onClick={toggleNotes}>
             {present.showNotes ? 'Hide Notes' : 'Notes'}
           </Button>
-          <Button variant="ghost" size="sm" onClick={toggleLegend}>
+          <Button ref={legendTriggerRef} variant="ghost" size="sm" onClick={toggleLegend}>
             Legend
           </Button>
         </div>
@@ -108,14 +130,22 @@ export function SlideStage() {
 
       {present.showLegend && (
         <div className="absolute inset-0 flex items-center justify-center bg-surface-0/80 backdrop-blur-sm">
-          <div className="glass-panel w-72 rounded-2xl p-5">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gesture-legend-title"
+            className="glass-panel w-72 rounded-2xl p-5"
+          >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-ink-0">Gesture Legend</h3>
+              <h3 id="gesture-legend-title" className="text-sm font-medium text-ink-0">
+                Gesture Legend
+              </h3>
               <button
+                ref={legendCloseRef}
                 type="button"
                 onClick={toggleLegend}
                 aria-label="Close legend"
-                className="text-ink-3 transition-colors hover:text-ink-0"
+                className="text-ink-3 outline-none transition-colors hover:text-ink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400"
               >
                 ✕
               </button>

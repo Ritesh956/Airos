@@ -33,7 +33,7 @@ export function Panel({
                 {eyebrow}
               </div>
             )}
-            {title && <div className="text-sm font-medium text-ink-0">{title}</div>}
+            {title && <h2 className="text-sm font-medium text-ink-0">{title}</h2>}
           </div>
           {action}
         </div>

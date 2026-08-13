@@ -14,6 +14,12 @@ export interface GameState {
   score: number;
   lives: number;
   highScore: number;
+  /** Mirrors GameCanvas's per-frame `shieldActive` boolean (OPEN_PALM or
+   *  held Shift) into the cold path — the shield ring is otherwise a
+   *  canvas-only visual with no text alternative for a screen reader. See
+   *  gameState.ts's `advance()`, the one place this is synced, and only on
+   *  the frame it actually changes. */
+  shieldActive: boolean;
 }
 
 const HIGH_SCORE_KEY = 'airos.game.highScore.v1';
@@ -30,6 +36,7 @@ export const gameStore = createStore<GameState>({
   score: 0,
   lives: 0,
   highScore: loadHighScore(),
+  shieldActive: false,
 });
 
 /** Called by `gameState.ts` after every real change (status/score/lives) —
@@ -42,4 +49,13 @@ export function syncGameSummary(patch: Pick<GameState, 'status' | 'score' | 'liv
     window.localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
   }
   gameStore.update({ ...patch, highScore });
+}
+
+/** Called by `gameState.ts`'s `advance()` only on the frame `shieldActive`
+ *  actually changes — an equality guard, not a throttle, since a per-frame
+ *  unconditional write would defeat the whole point of keeping this off
+ *  the hot path. */
+export function syncShieldState(active: boolean): void {
+  if (gameStore.get().shieldActive === active) return;
+  gameStore.update({ shieldActive: active });
 }

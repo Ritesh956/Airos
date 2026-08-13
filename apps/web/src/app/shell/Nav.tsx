@@ -28,6 +28,7 @@ export function Nav() {
             to={module.path}
             end={module.path === '/'}
             title={module.label}
+            aria-label={module.label}
             className={({ isActive }) =>
               cn(
                 'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',

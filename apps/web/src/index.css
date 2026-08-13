@@ -24,7 +24,13 @@
   --color-ink-0: #f4f6fb;
   --color-ink-1: #c7ccdb;
   --color-ink-2: #8b93ab;
-  --color-ink-3: #5b6178;
+  /* Lightened from the original #5b6178 (Phase 14 a11y pass) — that value
+     measured 2.7-3.3:1 against this app's own surface tokens, below WCAG
+     AA's 4.5:1 for the small caption/label text ink-3 is actually used at
+     everywhere (Panel eyebrows, Readout labels, helper copy). #7f879e
+     clears 4.5:1 against every surface-0..3 background while staying
+     visually distinct from ink-2, preserving the four-step hierarchy. */
+  --color-ink-3: #7f879e;
 
   /* Signal cyan — the one accent used for "the system is tracking you right
      now". Kept to a single hue on purpose so glow reads as meaningful. */
@@ -53,6 +59,28 @@
 @keyframes scan {
   0% { transform: translateY(-100%); }
   100% { transform: translateY(100%); }
+}
+
+/* These small "live/tracking" pulse dots (StatusPill, StatusBar, every
+   module header's "Phase N" chip) are purely decorative continuous
+   animations — exactly the category IMPLEMENTATION.md's reduced-motion
+   intent covers, but until Phase 14 they ran unconditionally, disconnected
+   from both the OS preference and hooks/useReducedMotion.ts's in-app
+   Settings toggle. Two rules, matching that hook's own "either source is
+   enough to disable it" contract: the media query catches the OS
+   preference directly (works even before React hydrates); the attribute
+   selector catches the in-app toggle, synced onto <html> by AppShell.tsx
+   whenever useReducedMotion()'s combined value changes. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-slow,
+  .animate-scan {
+    animation: none;
+  }
+}
+
+:root[data-reduce-motion='true'] .animate-pulse-slow,
+:root[data-reduce-motion='true'] .animate-scan {
+  animation: none;
 }
 
 @layer base {

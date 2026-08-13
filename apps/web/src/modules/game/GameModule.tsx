@@ -61,6 +61,7 @@ export default function GameModule() {
             <Readout label="Status" value={STATUS_LABEL[game.status] ?? game.status} method="DERIVED" />
             <Readout label="Score" value={game.score} method="DERIVED" />
             <Readout label="Lives" value={game.lives} method="DERIVED" />
+            <Readout label="Shield" value={game.shieldActive ? 'Active' : 'Off'} method="DERIVED" />
             <Readout label="Best" value={game.highScore} method="DERIVED" />
           </Panel>
 

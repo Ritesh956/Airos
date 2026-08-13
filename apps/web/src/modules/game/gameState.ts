@@ -1,4 +1,4 @@
-import { syncGameSummary } from './gameStore';
+import { syncGameSummary, syncShieldState } from './gameStore';
 import {
   applyPause,
   applyRestart,
@@ -46,6 +46,7 @@ export function getGameState(): GameSimState {
  *  frame without checking status first. */
 export function advance(dtMs: number, shieldActive: boolean): void {
   syncIfChanged(state, stepSimulation(state, dtMs, shieldActive));
+  syncShieldState(shieldActive);
 }
 
 export function fire(): void {
@@ -78,4 +79,5 @@ export function restart(): void {
 export function resetGameState(): void {
   state = createInitialSimState();
   syncGameSummary({ status: state.status, score: state.score, lives: state.lives });
+  syncShieldState(false);
 }

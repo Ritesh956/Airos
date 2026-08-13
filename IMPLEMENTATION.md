@@ -7,7 +7,7 @@ the contracts between layers, the phase order, and the definition of done for ea
 phase. It is meant to be read by a developer, updated as the build progresses, and
 used as the source of truth when a decision needs re-litigating.
 
-**Status:** Phases 1–13 complete. Phase 14 pending.
+**Status:** All 14 phases complete.
 
 ---
 
@@ -486,8 +486,17 @@ Parked until the relevant phase; recorded so they don't get silently decided.
 
 1. **Web Worker for inference** — moving MediaPipe off the main thread would
    protect render smoothness, but complicates GPU delegate setup and adds transfer
-   cost. Deferred to Phase 13, measured first. `VisionEngine` is deliberately an
-   async, message-shaped interface so this becomes a swap, not a rewrite.
+   cost. "Measured first" landed in Phase 13 (`vision.inferenceMs`, the Analytics
+   dashboard, `docs/PERFORMANCE.md`'s budget table) — the instrumentation to make
+   this decision with real numbers now exists, but no session has yet run it
+   against real camera hardware for long enough to say whether inference
+   routinely threatens the ≤12ms target/20ms ceiling. **Still open**: check
+   Analytics' "Inference time" readout under real load before deciding either
+   way — don't infer an answer from the degradation ladder existing, since that
+   ladder triggers on *frame rate*, not inference time specifically, and can
+   mask a slow-but-not-ceiling-breaking inference cost. `VisionEngine` is
+   deliberately an async, message-shaped interface so this becomes a swap, not
+   a rewrite, whenever it's decided.
 2. **Model hosting** — vendored into `public/models/` for offline use and CDN
    independence. Revisit if bundle size becomes a deployment problem.
 3. ~~**Two-hand rotation mapping**~~ — **Resolved in Phase 6**: vector angle

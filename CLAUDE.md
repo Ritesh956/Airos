@@ -23,7 +23,7 @@ split, why three stores, the Interaction Engine),
 code — each documents real thresholds and real bugs found while building, not
 just design intent.
 
-## Status: Phases 1–13 complete. Resume at Phase 14 (Polish).
+## Status: All 14 phases complete.
 
 | # | Phase | Status |
 |---|---|---|
@@ -40,7 +40,12 @@ just design intent.
 | 11 | Voice + Command Center | ✅ done |
 | 12 | Game Mode | ✅ done |
 | 13 | Analytics + Perf | ✅ done |
-| **14** | **Polish** | **← start here** |
+| 14 | Polish | ✅ done |
+
+The phase-by-phase build is finished. What's left is genuinely open-ended
+maintenance/extension work, not a queued next phase — see "Where things
+stand now" at the end of this file for what a future session should
+actually check before assuming anything below is still accurate.
 
 ### Git status: nothing committed yet
 
@@ -797,21 +802,133 @@ itself causes (stopping/off/starting/active), which would otherwise read
 "camera not live" mid-restart and immediately reverse the very change in
 progress.
 
-## How to resume: Phase 14, Polish
+## Phase 14 shipped: Polish
 
-Check IMPLEMENTATION.md §11's phase table (`Motion design, a11y pass,
-README, demo fixtures, deploy` / "Lighthouse ≥90; demo mode works") and
-§12's quality bar — this is the last phase, and it's cleanup/hardening
-rather than new capability: a motion-design pass (respecting
-`settings.reduceMotion`, already wired but worth auditing end to end), a
-real accessibility pass (keyboard-only navigation, screen-reader labels,
-color contrast — nothing in IMPLEMENTATION.md §11's earlier phases
-gated on this explicitly), bringing README.md/IMPLEMENTATION.md's
-remaining stale spots up to date (the "Working today" prose in README.md
-predates Phases 9-12 and is missing Face/Pose/Voice/Game Mode paragraphs
-— Phase 13 fixed the Analytics-specific claim there but didn't backfill
-the rest, since it wasn't this phase's job), demo fixtures, and a deploy
-pass. No open questions parked for this phase in IMPLEMENTATION.md §13.
+The last phase — cleanup/hardening across five fronts, no new capability.
+A real accessibility audit was run first (an Explore agent read every
+interactive component in `apps/web/src`), and every finding it surfaced
+was fixed, not just logged:
+
+- **Accessibility.** `--color-ink-3` (index.css) measured 2.7-3.3:1
+  against this app's own surface tokens — below WCAG AA's 4.5:1 for the
+  small caption/label text it's actually used at everywhere (Panel
+  eyebrows, Readout labels). Relightened to `#7f879e`, which clears
+  4.5:1 against every `surface-0..3` background while staying visually
+  distinct from `ink-2` — one token change, app-wide fix. `ui/Panel.tsx`'s
+  section titles were a plain `<div>`, never a heading — every module page
+  had exactly one real heading (`<h1>`) despite looking sectioned;
+  changed to `<h2>`. `app/shell/CommandPalette.tsx` had no dialog
+  semantics at all (no `role="dialog"`/`aria-modal`, no listbox/option
+  roles tying the input to its results, no focus trap, no `aria-label`
+  fallback below the `sm` breakpoint) — all added, including a Tab-
+  wrapping focus trap and focus returned to whatever opened it on close.
+  `modules/present/SlideStage.tsx`'s Gesture Legend overlay got the same
+  dialog treatment plus an Escape handler (`CalibrationFlow.tsx` already
+  had this pattern for its own overlay — reused, not reinvented).
+  `modules/game/GameCanvas.tsx`'s shield ring was canvas-only with no text
+  alternative — a real `shieldActive` field now syncs into `gameStore` on
+  the frame it actually changes (an equality-guarded setter, not a
+  per-frame write) and `GameModule.tsx` shows it as a Readout.
+  `ui/Button.tsx`'s `danger` variant had no `focus-visible` outline color
+  (the other three variants did); `ui/Toggle.tsx`'s switch had no
+  `focus-visible` treatment at all. `ui/Button.tsx` also needed
+  `forwardRef` added — it was a plain function component, so the Gesture
+  Legend's return-focus (`ref={legendTriggerRef}`) would have silently
+  no-opped without this.
+- **Motion design.** `--animate-pulse-slow`/`--animate-scan` (the small
+  "live" pulse dots in `StatusPill`, `StatusBar`, and every module
+  header's "Phase N" chip) ran unconditionally — disconnected from both
+  `prefers-reduced-motion` and `hooks/useReducedMotion.ts`'s "OS
+  preference OR the in-app Settings toggle" contract that `AppShell`'s
+  page transitions and `StudioScene`'s damping already honored. Fixed
+  with a CSS media query (catches the OS preference, works pre-hydration)
+  plus a `data-reduce-motion` attribute `AppShell.tsx` now syncs onto
+  `<html>` whenever the combined value changes (catches the in-app
+  toggle) — matching the same "either source is enough" rule everywhere
+  else in the app.
+- **Deploy.** `npm run build && npm run start` was silently broken —
+  see bug #14 below, a real production-breaking bug this phase's own
+  smoke test caught. `docs/DEVELOPMENT.md` gained a real "Deployment"
+  section (there wasn't one); root `package.json` gained a `start` script.
+  No containerization/CI added — deliberately out of scope until a
+  specific host is chosen, since the right Dockerfile/workflow shape
+  depends on that host's conventions.
+- **README/IMPLEMENTATION.md staleness.** README.md's "Working today"
+  prose predated Phases 9-12 (Phase 13 only fixed the Analytics-specific
+  claim there, not the rest, since backfilling wasn't that phase's job) —
+  added the missing Face/Pose/Voice/Game Mode paragraphs. §13's Web
+  Worker open question said "deferred to Phase 13, measured first" —
+  Phase 13 built the measurement (`vision.inferenceMs`, the Analytics
+  dashboard), but **the question itself stays open**: no session has run
+  it against real camera hardware long enough to know if inference
+  routinely threatens the ≤12ms target. Updated the open question to say
+  exactly that rather than fabricating a resolution — see IMPLEMENTATION.md
+  §13's note not to infer an answer from the degradation ladder existing
+  (it triggers on frame rate, not inference time specifically).
+- **Demo fixtures.** Audited, not rebuilt: every fixture that needed
+  bug #6's "does it actually exercise what it claims to" test already had
+  one from the phase that built it (`fixtures.test.ts`, `faceMesh.test.ts`,
+  `poseSkeleton.test.ts`) — no new gap found. Game Mode has no fixture of
+  its own; it reuses the same hand-gesture-showcase fixture every module
+  does, already covering PINCH (fire) and OPEN_PALM (shield).
+
+**Lighthouse wasn't run.** The CLI isn't installed in this environment and
+this session didn't add it unprompted — a new devDependency plus a full
+Chrome-automation audit run is a bigger unilateral call than a docs/CSS/
+component fix, and the honest thing is to say plainly it wasn't checked
+rather than claim a score. If a future session has Lighthouse available,
+running it against the production build (`npm run build && npm run
+start`, then Lighthouse against `localhost:8787`) is the one piece of
+this phase's stated gate ("Lighthouse ≥90") still unverified.
+
+### Bug found and fixed: production `npm run start` was silently broken
+
+`packages/shared/package.json`'s `"main"` pointed at `./src/index.ts` —
+the TypeScript *source*, not `./dist/index.js`. This worked for
+`@airos/web` (Vite transpiles workspace-linked TypeScript on the fly, dev
+or build) but `@airos/server`'s production entry point is plain
+`node dist/index.js`, and Node cannot execute `.ts` at all:
+`ERR_UNKNOWN_FILE_EXTENSION`. Every phase's gate ran `npm run build`, and
+`npm run build` succeeded every time — `tsc -p tsconfig.json` for
+`@airos/shared` correctly emitted `dist/index.js`/`dist/protocol.js`
+alongside the source the whole time, so the *build* was never broken,
+only what `package.json` pointed consumers at. Nothing before this phase
+ever ran the actual production start command end-to-end — `docs/
+DEVELOPMENT.md` never had a Deployment section, and no CLAUDE.md phase
+write-up mentions `npm run start` being smoke-tested, only `npm run
+build`. Fixed by pointing `main`/`types` at `./dist/index.js`/`./dist/
+index.d.ts`. That fix alone would have broken the zero-build-step dev
+workflow (`git clone && npm install && npm run dev` working immediately,
+since `dist/` doesn't exist until something builds it) — closed by adding
+`"prepare": "tsc -p tsconfig.json"` to `packages/shared/package.json`,
+npm's designated hook for "build this local workspace package on
+install," verified empirically in this session (deleted `dist/`, ran
+`npm install` at the root, confirmed it regenerated). **Lesson**: `npm
+run build` passing is not the same claim as `npm run start` working — a
+monorepo's internal `package.json` `"main"` field pointing at source
+instead of a package's own build output is invisible to every gate this
+project runs *except* actually executing the built artifact the way
+production would. Any future phase that touches a workspace package's
+`package.json` (adding an export, changing `main`) should smoke-test
+`npm run build && npm run start`, not just `npm run build`, before
+considering it done.
+
+## Where things stand now
+
+All 14 phases are complete and the full gate (`typecheck && lint &&
+test:run && build`) is clean. This project has no queued next phase —
+what's left is genuinely open-ended: real hardware performance data to
+resolve the Web Worker question (§13 above), Lighthouse once it's
+available, containerization/CI once a host is chosen, or whatever the
+next person actually wants built on top of this. Read the "Bugs found and
+fixed" list below before touching throttled state, resets, or anything
+that both subscribes to and writes into the same store — it's the
+project's accumulated memory of real failure modes, not historical
+trivia, and every one of them was found the same way: build it, then
+actually drive it (in a browser, or against a real production start
+command) before believing the automated gate's green checkmark is the
+whole story.
+
 ## Architecture quick-reference (see docs/ARCHITECTURE.md for full detail)
 
 - **Three state stores**: `appStore` (module/camera/settings, user-driven),
@@ -853,7 +970,7 @@ pass. No open questions parked for this phase in IMPLEMENTATION.md §13.
 ```bash
 npm run typecheck   # tsc -b across all 3 workspaces
 npm run lint        # eslint, includes the boundaries rule
-npm run test:run    # vitest run — 222 tests as of end of Phase 13
+npm run test:run    # vitest run — 222 tests as of end of Phase 14 (unchanged from Phase 13 — this phase touched components, config, and docs, not test coverage)
 npm run build       # tsc + vite build, all 3 workspaces
 ```
 Run all four before considering any phase done. `npm run dev` (or the
@@ -1084,6 +1201,34 @@ if you don't know to watch for it.
     after, or a sibling re-entrant call can duplicate the same side
     effect. Don't assume #12's fix is the complete pattern for this class
     of bug — it stops the infinite case, not every duplicate-call case.
+
+14. **Production `npm run start` was silently broken since the repo's
+    first commit** (Phase 14). `packages/shared/package.json`'s `"main"`
+    pointed at `./src/index.ts` — the TypeScript *source*. This worked
+    for `@airos/web` (Vite transpiles workspace-linked TypeScript on the
+    fly) but `@airos/server`'s production entry is plain `node dist/
+    index.js`, and Node cannot execute `.ts` at all —
+    `ERR_UNKNOWN_FILE_EXTENSION`, immediately on startup. Every phase's
+    gate ran `npm run build`, and `npm run build` genuinely succeeded
+    every time (`tsc` correctly emitted `packages/shared/dist/` the whole
+    time) — the *build* was never broken, only what `package.json`
+    pointed consumers at, which nothing before Phase 14 ever exercised:
+    no phase's gate, and no CLAUDE.md write-up, mentions smoke-testing
+    `npm run start`, only `npm run build`. Fixed by pointing `main`/
+    `types` at `./dist/index.js`/`./dist/index.d.ts`, plus adding
+    `"prepare": "tsc -p tsconfig.json"` to the same `package.json` —
+    without it, this fix would have broken the zero-build-step dev
+    workflow instead (`git clone && npm install && npm run dev` needs
+    `packages/shared/dist/` to exist, and nothing built it until then).
+    Verified empirically, not assumed: deleted `dist/`, ran `npm install`
+    at the root, confirmed `prepare` regenerated it. **Lesson**: `npm run
+    build` passing is not the same claim as `npm run start` working — a
+    monorepo workspace's `package.json` `"main"` pointing at source
+    instead of its own build output is invisible to every gate this
+    project runs *except* actually executing the built artifact the way
+    production would. Any future change to a workspace package's
+    `package.json` (`main`, `exports`, adding a new entry point) should
+    smoke-test `npm run build && npm run start`, not just `npm run build`.
 
 ## Process notes for whoever (whatever) continues this
 

@@ -70,6 +70,7 @@ export function StatusBar() {
         <StatusPill state={cameraState} />
         <button
           onClick={() => toggleCommandPalette(true)}
+          aria-label="Open command palette"
           className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-ink-2 transition-colors hover:border-border-strong hover:text-ink-0"
         >
           <CommandIcon className="h-3.5 w-3.5" />

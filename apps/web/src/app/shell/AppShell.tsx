@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Nav } from './Nav';
@@ -27,6 +27,16 @@ export function AppShell() {
   useGlobalKeyboardCommands();
   useVoiceCommands();
   usePerfDegradation();
+
+  // Mirrors the combined OS-preference-or-Settings-toggle value onto
+  // <html> so plain CSS keyframe animations (index.css's
+  // animate-pulse-slow/animate-scan) can respect the in-app toggle too,
+  // not just prefers-reduced-motion — the same "either source disables
+  // it" contract useReducedMotion() already documents for the
+  // framer-motion/Studio-damping consumers of this hook.
+  useEffect(() => {
+    document.documentElement.dataset.reduceMotion = String(reduceMotion);
+  }, [reduceMotion]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface-0 text-ink-0">

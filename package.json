@@ -12,6 +12,7 @@
     "dev": "npm run dev -w @airos/web",
     "dev:server": "npm run dev -w @airos/server",
     "build": "npm run build -w @airos/shared && npm run build -w @airos/web && npm run build -w @airos/server",
+    "start": "npm run start -w @airos/server",
     "typecheck": "npm run typecheck -w @airos/shared && npm run typecheck -w @airos/web && npm run typecheck -w @airos/server",
     "lint": "npm run lint -w @airos/web && npm run lint -w @airos/server",
     "test": "npm run test -w @airos/web",

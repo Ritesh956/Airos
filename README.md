@@ -15,10 +15,10 @@ decision — start there.
 
 ## Current status
 
-**Phases 1–13 of 14: Architecture & Camera, Hand Tracking, Gesture Engine,
-Air Cursor, Gesture Lab, 3D Studio, Air Draw, Presentation, Face
+**All 14 phases complete: Architecture & Camera, Hand Tracking, Gesture
+Engine, Air Cursor, Gesture Lab, 3D Studio, Air Draw, Presentation, Face
 Tracking, Pose Tracking, Voice + Command Center, Game Mode, Analytics +
-Perf** — complete. See IMPLEMENTATION.md §11 for the full phase plan.
+Perf, Polish.** See IMPLEMENTATION.md §11 for the full phase plan.
 
 Working today: the app shell, routing, the design system, the camera
 lifecycle (start/stop/error handling, verified against the OS camera
@@ -78,6 +78,35 @@ per-frame tracking of its own. Demo Mode can fully exercise the core
 interaction here (unlike 3D Studio's two-hand gesture): the synthetic
 fixture's swipe keyframe advances slides through the real code path. Full
 mouse and keyboard parity throughout.
+
+Face and Pose tracking aren't separate modules — they're opt-in
+capabilities inside Gesture Lab's existing "Track Face"/"Track Pose"
+toggles, running a second and third MediaPipe model alongside hand
+tracking. Face draws a face oval/eyes/eyebrows/lips overlay from the raw
+landmark mesh; Pose draws the 33-point body skeleton plus four DERIVED
+elbow/knee joint-angle readouts (the same angle-between-three-points math
+the gesture engine already uses for finger curl). Both are deliberately
+tracking-only: no expression, emotion, age, or identity inference, and
+the models are never even asked for the blendshape/segmentation-mask
+outputs that would make that possible.
+
+Voice control is a fourth input modality dispatched through the same
+Command Router every keyboard shortcut and gesture already uses — "open
+3D studio" spoken aloud runs the identical `dispatchPhrase()` path as
+clicking it in the palette. A Settings panel toggle turns it on, shows
+what was heard and which command it matched (never a silent black box),
+and degrades honestly to a plain message on browsers without
+`SpeechRecognition` support instead of a dead toggle.
+
+Game Mode is a small vertical shooter proving the pipeline is fast and
+precise enough to actually play with: point to steer, pinch to fire, hold
+an open palm to raise a shield against incoming enemies. The entire game
+— enemy movement, spawning cadence, collisions, lives, score — is a pure,
+unit-tested `stepSimulation()` function; a thin stateful wrapper drives it
+every animation frame, the same "pure core, thin wrapper" split
+Presentation's timer math established. Full mouse (click to fire) and
+keyboard (arrow keys, Space, Shift) parity, with a `localStorage`-persisted
+high score.
 
 Analytics is a real performance dashboard, not a placeholder: live FPS
 (smoothed and a rolling 3-second median), inference/frame-time readouts,

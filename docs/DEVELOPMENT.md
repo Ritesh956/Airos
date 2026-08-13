@@ -53,6 +53,35 @@ Plus a manual check in an actual browser: navigate every route, confirm no
 console errors, and if the phase touches the camera, confirm the OS camera
 indicator turns off when tracking stops.
 
+## Deployment
+
+There's no separate static host and API host to coordinate — `@airos/server`
+serves both from one process (IMPLEMENTATION.md §10):
+
+```bash
+npm run build   # builds @airos/shared, then @airos/web's dist/, then @airos/server
+npm run start   # node apps/server/dist/index.js — serves the built client,
+                # /api/health, and the WS relay from one port
+```
+
+`PORT` (defaults to `8787`) is the only environment variable anything in
+this repo reads — there's no database, no API keys, nothing else to
+configure. Any platform that can run `npm install && npm run build && npm
+run start` and exposes one port works: a single Node service (Render,
+Fly.io, Railway, a plain VPS) is the natural fit, since the server process
+*is* the whole deployment — no separate CDN/static-host step is needed for
+the client. **The one thing worth remembering before choosing a host**:
+this app needs no backend at all to demo — every module works fully
+against Demo Mode's synthetic fixture with the server offline (see
+IMPLEMENTATION.md §10's "the app is fully functional with the server
+offline"). A static host serving just `apps/web/dist/` also works if the
+health endpoint and WS relay aren't needed for a given deployment.
+
+No containerization or CI config exists yet — deliberately out of scope
+for this pass rather than an oversight; add one when a specific target
+platform is chosen, since the right Dockerfile/workflow shape depends on
+which host's conventions it needs to match.
+
 ## Path aliases
 
 `@/*` resolves to `apps/web/src/*` (configured in both `tsconfig.app.json`

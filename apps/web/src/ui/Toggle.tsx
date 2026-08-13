@@ -28,6 +28,7 @@ export function Toggle({ checked, onChange, label, description, disabled }: Togg
         onClick={() => onChange(!checked)}
         className={cn(
           'relative h-6 w-11 shrink-0 rounded-full border transition-colors',
+          'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400',
           checked ? 'border-signal-500/40 bg-signal-500/30' : 'border-border-strong bg-surface-3',
         )}
       >
