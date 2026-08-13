@@ -9,7 +9,7 @@ interface State {
 }
 
 /**
- * A last-resort boundary. IMPLEMENTATION.md §20: "never silently fail" —
+ * A last-resort boundary. IMPLEMENTATION.md §12: "No silent failures." —
  * this exists so a render-time crash (a bad model response, a WebGL
  * context loss, anything) surfaces as a visible, recoverable screen
  * instead of a blank white page.

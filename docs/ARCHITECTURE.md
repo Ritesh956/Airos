@@ -229,7 +229,7 @@ it, and a lazy-loaded component. The sidebar nav, the router
 registered in `app/shell/useNavigationCommands.ts` all read this one array.
 Adding a tenth module means adding one entry here — no other file changes.
 
-## What's actually built (everything, as of Phase 13)
+## What's actually built (everything — all 14 phases complete)
 
 Home, Settings, Air Cursor, Gesture Lab, 3D Studio, Air Draw, and
 Presentation are fully functional: camera start/stop with real error

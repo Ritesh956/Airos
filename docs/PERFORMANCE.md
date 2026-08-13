@@ -84,6 +84,11 @@ that the controller didn't really apply.
 
 ## What's next
 
-Phase 14 (Polish) is what remains — motion design, an accessibility pass,
-and deploy fixtures. Performance instrumentation itself is done as of
-Phase 13.
+All 14 phases are complete — there's no queued next phase. The one open
+item touching performance specifically is IMPLEMENTATION.md §13's Web
+Worker question: Phase 13 built the measurement this decision needs
+(`vision.inferenceMs`, the Analytics dashboard), but no session has yet
+run it against real camera hardware long enough to know whether inference
+routinely threatens the ≤12ms target above. That's a real-hardware
+measurement task for whoever picks this up next, not something resolvable
+from this repo alone.

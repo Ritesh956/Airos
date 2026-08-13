@@ -4,7 +4,9 @@
 
 - Node.js 20+ (developed against Node 22)
 - A recent Chromium-based browser (Chrome or Edge) for testing camera/vision
-  features — see IMPLEMENTATION.md §21 for the browser support policy
+  features — see IMPLEMENTATION.md §6's error taxonomy and
+  `utils/browserSupport.ts` for the actual feature-detection policy
+  (secure context, `getUserMedia`, WebGL2, WebAssembly, Speech Recognition)
 - No database, no external services, no API keys needed for anything in
   this repo so far
 
