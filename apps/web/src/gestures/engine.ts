@@ -6,8 +6,11 @@ import { SwipeDetector } from './temporal/swipe';
 // A pose must hold for this many consecutive frames before it's reported
 // as the active gesture — this, not the classifiers' own angle margins, is
 // what keeps a hand hovering near a decision boundary from flickering
-// between two gestures many times a second.
-const STABILITY_FRAMES = 3;
+// between two gestures many times a second. Default matches
+// AppSettings.gestureStabilityFrames' own default (appStore.ts) — the real,
+// live value is passed into the constructor by gestureBridge.ts (the one
+// caller allowed to read state/, per gestures/'s lint boundary below).
+const DEFAULT_STABILITY_FRAMES = 3;
 
 // Pinch uses a Schmitt trigger (two thresholds, not one): entering pinch
 // requires the thumb/index tips to get closer than PINCH_ENTER_RATIO,
@@ -53,6 +56,18 @@ function createHandTrack(): HandTrack {
  */
 export class GestureEngine {
   private tracks = new Map<Handedness, HandTrack>();
+  private stabilityFrames: number;
+
+  constructor(stabilityFrames: number = DEFAULT_STABILITY_FRAMES) {
+    this.stabilityFrames = stabilityFrames;
+  }
+
+  /** Live-updatable so a Settings change takes effect immediately, without
+   *  needing to reconstruct the engine (which would also drop in-progress
+   *  per-hand history). */
+  setStabilityFrames(frames: number): void {
+    this.stabilityFrames = frames;
+  }
 
   /** Classifies one hand's gesture for this frame, updating that hand's
    *  history in the process. Call once per tracked hand, every frame. */
@@ -122,7 +137,7 @@ export class GestureEngine {
       track.pendingCount = 1;
     }
 
-    if (track.pendingCount >= STABILITY_FRAMES) {
+    if (track.pendingCount >= this.stabilityFrames) {
       track.stableGesture = raw.gesture;
       track.pendingGesture = null;
       track.pendingCount = 0;

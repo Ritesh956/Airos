@@ -137,7 +137,9 @@ export default function DrawModule() {
         <h1 className="mt-3 text-2xl font-medium text-ink-0">Air Draw</h1>
         <p className="mt-1 max-w-xl text-sm text-ink-2">
           Pinch to draw, make a fist to erase, open your palm to lift the brush. No camera handy?
-          Click and drag with a mouse — same canvas, same strokes.
+          Click and drag with a mouse — same canvas, same strokes. Prefer the keyboard? Focus the
+          canvas below, move with the arrow keys, hold Space to draw, and press E to switch to the
+          eraser.
         </p>
       </section>
 

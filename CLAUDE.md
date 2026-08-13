@@ -1046,25 +1046,172 @@ user engagement, not just "the browser is idle," is what actually removes
 it from that measurement, and is also the more honest description of
 when the work is actually needed.
 
+## Post-Phase-14, continued: a full system audit and 30 fixes
+
+A later session ran a ground-up audit — every doc, every source file, the
+full gate, a live browser pass, and a real production build — looking for
+defects the phase-by-phase build process hadn't caught, independent of
+what any single phase's own gate was scoped to check. It found 30: 5
+high-severity (camera lifecycle correctness and honesty), 9 medium
+(state-store hygiene, security, a dead Settings field), and 16 low
+(accessibility, robustness, doc/config drift). All 30 were fixed in the
+same session, verified against the full gate plus targeted live checks
+(including a real production server, not just `npm run dev`), with zero
+regressions and zero net change to test count (still 222 green).
+
+### The five high-severity fixes
+
+All five sit in the camera-lifecycle / Interaction-Engine layer — the
+exact area this file's own bug list already flags as the project's most
+failure-prone:
+
+- **Demo Mode left the camera running.** Switching to Demo Mode only ever
+  called `setInputSource('replay')` — nothing stopped the stream, and the
+  Stop button was hidden the *entire time* Demo Mode was on
+  (`CameraStage.tsx`'s `isDemoMode ? null : …` branch), so there was no
+  way to turn the camera off without leaving Demo Mode first. Fixed two
+  ways: `CameraManager` now subscribes to `appStore` and auto-stops when
+  `inputSource` becomes `'replay'`; `CameraStage`'s Start/Stop buttons now
+  key off real `cameraState` instead of `isDemoMode`, so Stop is never
+  hidden while the camera is actually active. Verified live.
+- **The crash screen claimed the camera had already been stopped. It
+  hadn't.** `ErrorBoundary`'s copy said so; nothing in `componentDidCatch`
+  ever called `cameraManager.stop()`. Fixed by actually calling it —
+  making the sentence true rather than deleting it.
+- **A model-load failure killed tracking silently, forever** — see bug
+  #19 below.
+- **`stop()` was a no-op while `start()` was still awaiting permission** —
+  see bug #20 below.
+- **Three of the four Interaction Engines (`DrawEngine`, `GameEngine`,
+  `StudioEngine`) never got `CursorEngine`'s `trackingState → 'idle'`
+  reset**, added there originally for the reason documented at length in
+  `CursorEngine.ts` itself: once an engine can outlive the vision task it
+  depends on — which all four now can, since Air Draw, Game Mode, and 3D
+  Studio each mount their own engine independently of whichever module is
+  active — releasing that task without an `inputSource`/`cameraState`
+  change leaves `latest` frozen at whatever it was the instant the task
+  was released. Returning to Air Draw mid-pinch, for instance, resumed
+  with a stale `{visible: true, gesture: 'PINCH'}` and began a phantom
+  stroke on the very first render frame back. This is bug #8's own lesson
+  ("reset whenever frames could stop arriving, not just the specific
+  triggers found so far") missed at three of the four call sites that
+  needed it — fixed by giving all four the same watcher.
+
+### Nine medium fixes, briefly
+
+Two missing equality guards (`setTrackingState`, `setSelectedObjectId`)
+were writing into `interactionStore` at up to 60Hz for values that only
+actually change a couple of times a second — exactly the cost the
+cold-path throttle discipline exists to prevent, caught by the same
+pattern `setVoiceState`/`setDegradationLevel` already used elsewhere.
+Production never sent the COOP/COEP headers the dev server always has, so
+MediaPipe silently ran a slower code path in every real deployment —
+fixed, and verified live that the fix (plus a new CSP added alongside it)
+doesn't break WASM loading or the Three.js bundle.
+`scripts/fetch-models.mjs` downloaded straight to its destination path,
+so a network failure mid-download left a permanently truncated file that
+both `npm install` and the script's own documented recovery command
+(`npm run models:fetch`) would silently treat as "already present"
+forever — fixed with a `.partial`-then-rename pattern.
+`AirCursorOverlay` ran a `requestAnimationFrame` loop for the app's
+entire lifetime regardless of activity — switched to
+`cursorEngine.subscribe()`, the same push-driven pattern
+`HandSkeletonOverlay` already used against `visionEngine`. Game Mode's
+steering/shield keys stuck on after alt-tab (no `blur` handler, and
+`keyup` was wrongly gated the same way `keydown` needed to be). The
+WebSocket relay had no origin check, no payload cap, and no heartbeat —
+added all three. The production server sent no security headers at all —
+added a CSP plus the standard set. `AppSettings.gestureStabilityFrames`
+was declared, defaulted, and persisted but read by nothing — wired into
+`GestureEngine` for real (a live-updatable `setStabilityFrames()`) and
+given an actual Settings control.
+
+### Sixteen low fixes, briefly
+
+`drawGallery.ts`'s save resolved before its IndexedDB transaction had
+actually committed, matching `deleteDrawing`'s already-correct
+`tx.oncomplete` pattern now. The PNG export revoked its object URL
+synchronously right after `click()`, which Firefox/Safari can cancel — now
+delayed. The camera preview froze on its last frame after Stop because
+`CameraStage` and `CameraPreview` each called `useCamera()` independently
+with their own private attached-video ref, so Stop from one instance
+never touched what the other had attached — fixed by sharing attachment
+state module-wide. `CameraLandmarkSource` had a duplicate-inference-loop
+race — see bug #20. `useStoreSelector`'s equality-guard contract was
+implicit and easy to violate for a future selector; documented explicitly
+now. Added `aria-live` announcements for tracking state (`StatusBar`) and
+game status/lives (`GameModule`) — deliberately *not* applied to every
+`Readout`, since a live region re-announcing something several times a
+second is its own accessibility anti-pattern. Fixed missing
+`scope`/`caption` on the landmark table. `VisionEngine.recompute()`'s
+`!anyActive` branch was calling `resetVisionStore()` on every unrelated
+Settings change even with nothing to reset; `resetVisionStore()` was also
+zeroing `degradationLevel`, a field it doesn't own, flickering the perf
+pill during the degradation ladder's own self-triggered camera restarts —
+both fixed. Memoized `checkBrowserSupport()` (it was creating a fresh,
+never-released `WebGL2RenderingContext` on every single camera error).
+Stopped misclassifying `video.play()` autoplay-policy failures as "camera
+permission denied" (they reused `getUserMedia`'s error taxonomy, which
+means something different for the same DOMException name). Moved
+`@types/compression` to devDependencies. Added the model manifest
+IMPLEMENTATION.md §10 always specified to `/api/health`, checked against
+the real files on disk rather than assumed present. Split the Three.js
+vendor bundle into its own chunk for better long-term caching (StudioModule
+itself dropped from 911KB to 12KB; the vendor code moved, not shrank).
+
+### One real feature addition: Air Draw keyboard parity
+
+Every other gesture-driven module in the app has full keyboard parity per
+§1.6 — Air Draw's canvas didn't; only Undo/Redo/Clear had a keyboard
+path, and the drawing action itself had none. Fixed by making the canvas
+focusable, with arrow keys moving a keyboard cursor (the same
+keysHeld-plus-per-frame-movement pattern `GameCanvas.tsx` already
+established for ship steering), Space drawing or erasing at that
+position, and `E` toggling which of the two Space performs — a
+conventional paint-tool brush/eraser switch, not a held modifier chord.
+Structurally reuses the exact `strokesApi.beginStroke`/`appendPoint`/
+`commitStroke` calls the gesture and mouse paths already call, and
+extends the file's existing `activeInputRef` mutual-exclusion (previously
+just gesture-vs-mouse) to a third value so all three can't drive a stroke
+concurrently.
+
+**A verification limit worth recording honestly, in the spirit of this
+file's own quality bar on fabricated confidence**: this feature's actual
+pixel-painting behavior could not be confirmed live. Both browser
+surfaces available in that session reported `document.hidden: true`
+throughout — the exact `requestAnimationFrame`-pausing condition this
+file's own Process Notes section already documents from Phases 10–12 —
+and neither the sandboxed preview pane nor a fresh real-Chrome tab could
+produce a genuinely foregrounded tab to work around it that time.
+Confirmed instead, directly: the canvas is focusable, `keydown`/`keyup`/
+`focus`/`blur` all wire and fire without error, and the implementation is
+structurally identical to the already-verified gesture/mouse drawing
+paths (same `strokesApi` calls, same tool-cursor render). Flagged
+plainly rather than claimed.
+
 ## Where things stand now
 
 All 14 phases are complete and the full gate (`typecheck && lint &&
 test:run && build`) is clean; Lighthouse against a real production build
-now scores Performance 91 / Accessibility 100 / Best Practices 100 /
-SEO 91, meeting §11 Phase 14's "Lighthouse ≥90" gate (see "Post-Phase-14,
-continued" above for how). This project has no queued next phase — what's
+scores Performance 91 / Accessibility 100 / Best Practices 100 / SEO 91,
+meeting §11 Phase 14's "Lighthouse ≥90" gate (see "Post-Phase-14,
+continued" above for how). A later full-codebase audit (immediately
+above) found and fixed 30 further defects the phase gates hadn't
+caught — the gate is still green after all of them, plus a live
+production-server check of the security headers and health-endpoint
+manifest that pass added. This project has no queued next phase — what's
 left is genuinely open-ended: real hardware performance data to resolve
 the Web Worker question (§13 above — note this is now a separate question
 from Lighthouse's score, which no longer depends on it), containerization/
-CI once a host is chosen, or whatever the next person actually wants
-built on top of this. Read the "Bugs found and
-fixed" list below before touching throttled state, resets, or anything
-that both subscribes to and writes into the same store — it's the
-project's accumulated memory of real failure modes, not historical
-trivia, and every one of them was found the same way: build it, then
-actually drive it (in a browser, or against a real production start
-command) before believing the automated gate's green checkmark is the
-whole story.
+CI once a host is chosen, a real screen-reader pass now that the aria-live
+regions and Air Draw keyboard path exist, or whatever the next person
+actually wants built on top of this. Read the "Bugs found and fixed" list
+below before touching throttled state, resets, or anything that both
+subscribes to and writes into the same store — it's the project's
+accumulated memory of real failure modes, not historical trivia, and
+nearly every one of them was found the same way: build it, then actually
+drive it (in a browser, or against a real production start command)
+before believing the automated gate's green checkmark is the whole story.
 
 ## Architecture quick-reference (see docs/ARCHITECTURE.md for full detail)
 
@@ -1491,6 +1638,64 @@ if you don't know to watch for it.
     the plain "top-left of content box" most people assume, and this
     class of bug is invisible from reading the component's source code
     alone; it only showed up by measuring real rendered geometry.
+
+19. **A model-load failure killed the tracking loop silently, forever**
+    (audit pass, post-Phase-14). `CameraLandmarkSource.tick()` is `async`
+    but invoked as a discarded promise from `requestVideoFrameCallback`/
+    `requestAnimationFrame` — nothing ever awaits it, so a rejection from
+    `detectHands`/`detectFace`/`detectPose` (a failed model fetch, a GPU
+    delegate failure) threw past the `scheduleNext()` call at the bottom
+    of the method without ever reaching it. The loop stopped forever;
+    `cameraState` stayed `'active'`; the preview kept showing live video;
+    every readout froze at whatever it last read, with no error shown
+    anywhere — a direct violation of §12's "no silent failures."
+    Compounding it: `CameraErrorReason` has carried a
+    `'model-load-failed'` entry, and `CAMERA_ERROR_MESSAGES` a real
+    message for it, since Phase 1 — but nothing in the codebase ever
+    assigned it; `classifyCameraError` has no branch that returns it,
+    since it only ever ran against a `getUserMedia` failure. That entire
+    row of §6's error taxonomy was dead code. Fixed by wrapping the
+    inference calls in try/catch: on failure, stop the camera outright
+    and publish `setCameraState('error', 'model-load-failed')`, giving
+    the failure the exact same taxonomy and recovery path (Start Camera
+    again) any other camera error already has. **Lesson**: an `async`
+    function invoked as a discarded promise from a browser callback
+    (`requestAnimationFrame`, `requestVideoFrameCallback`, `setTimeout`)
+    has no caller that will ever see it reject — any such function needs
+    its own complete error handling, since nothing upstream can provide
+    it after the fact.
+
+20. **Two unrelated async-race bugs, found in the same audit pass, both
+    closed with the same generation-counter shape** (post-Phase-14).
+    (a) `CameraManager.stop()` early-returned when `!this.stream &&
+    !this.videoEl` — exactly the state during `doStart()`'s await on
+    `getUserMedia` — so calling Stop while the permission prompt was
+    still pending did nothing at all, and the camera came on anyway the
+    moment permission resolved, seconds after an explicit instruction not
+    to. (b) `CameraLandmarkSource.cancelLoop()` only ever nulled
+    `this.loop`; if `cameraState` cycled inactive-then-active-again while
+    a `tick()` was still mid-await (exactly what the degradation ladder's
+    own `downgradeResolution()`/`restoreDefaultResolution()` does),
+    `syncWithCameraState()` would start a fresh loop via `scheduleNext()`,
+    and the original in-flight `tick()` would *also* reach its own
+    `scheduleNext()` call once it finally resumed — silently overwriting
+    `this.loop` with a second, duplicate loop that nothing could ever
+    cancel again, doubling inference cost per frame forever. Both fixed
+    identically: a `generation` counter bumped by whichever operation
+    should invalidate anything currently in flight (`stop()`;
+    `cancelLoop()`), captured by the async operation at its own start, and
+    re-checked after every `await` — if the generation has moved on since,
+    the resumed code tears down whatever it just produced instead of
+    acting on stale authority. Neither bug was ever hit live; both were
+    caught by tracing the actual await-interleaving by hand. **Lesson**:
+    any async operation that can be superseded by a synchronous action
+    taken while it's suspended (a second `start()`, a `stop()`, a
+    state-machine reset) needs to verify, after every `await`, that it's
+    still the operation whose result should be applied — a boolean
+    "in progress" flag isn't enough once more than one such operation can
+    be in flight or in sequence; a monotonically increasing generation
+    number, captured once and compared on resume, is what actually closes
+    it.
 
 ## Process notes for whoever (whatever) continues this
 

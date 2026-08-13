@@ -16,8 +16,15 @@ import { throttle } from '@/state/createStore';
  * One GestureEngine instance for the whole app, same reasoning as
  * VisionEngine: there's only one camera/hand-tracking pipeline active at a
  * time, so there's only one gesture history to maintain.
+ *
+ * Seeded from the live `AppSettings.gestureStabilityFrames` setting rather
+ * than the engine's own hardcoded default — this is the one call site
+ * allowed to read `state/` (the lint boundary keeps `gestures/` itself
+ * pure, see engine.ts's doc comment), so it's also the one place that can
+ * keep the engine's stability window in sync with a Settings change; see
+ * `ensureGestureBridgeStarted()` below for the live-update half.
  */
-const engine = new GestureEngine();
+const engine = new GestureEngine(appStore.get().settings.gestureStabilityFrames);
 
 const PUBLISH_INTERVAL_MS = 100; // matches visionStore's cold-path rate
 
@@ -88,6 +95,7 @@ function handleFrame(frame: VisionFrame): void {
 let started = false;
 let lastInputSource = appStore.get().inputSource;
 let lastCameraState = appStore.get().cameraState;
+let lastStabilityFrames = appStore.get().settings.gestureStabilityFrames;
 
 /** Idempotent: safe to call from every component that wants gesture data.
  *  Classifying gestures on landmarks that are already being tracked is
@@ -99,7 +107,15 @@ export function ensureGestureBridgeStarted(): void {
   visionEngine.subscribe(handleFrame);
 
   appStore.subscribe(() => {
-    const { inputSource, cameraState } = appStore.get();
+    const { inputSource, cameraState, settings } = appStore.get();
+
+    // Independent of the inputSource/cameraState early-return below — a
+    // Settings change shouldn't need a source switch to take effect.
+    if (settings.gestureStabilityFrames !== lastStabilityFrames) {
+      lastStabilityFrames = settings.gestureStabilityFrames;
+      engine.setStabilityFrames(lastStabilityFrames);
+    }
+
     if (inputSource === lastInputSource && cameraState === lastCameraState) return;
     lastInputSource = inputSource;
     lastCameraState = cameraState;

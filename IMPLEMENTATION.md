@@ -114,6 +114,13 @@ Command Router as voice and gestures. Rationale: accessibility, demoability
 without a camera, and it forces the command layer to be genuinely decoupled
 rather than gesture-shaped.
 
+A post-Phase-14 audit found one real gap against this rule: Air Draw's
+canvas had keyboard bindings for Undo/Redo/Clear but none for the drawing
+action itself. Closed by making the canvas focusable, with arrow keys
+moving a keyboard cursor, Space drawing/erasing, and `E` switching tools —
+see CLAUDE.md's "Post-Phase-14, continued: a full system audit" for the
+detail and its one honest verification limit.
+
 ### 1.7 Monorepo via npm workspaces
 
 `apps/web`, `apps/server`, `packages/shared`. The shared package holds the wire
@@ -424,11 +431,19 @@ Each step is reversible when FPS recovers, with hysteresis to avoid oscillation.
 
 Deliberately tiny. The app is fully functional with the server offline.
 
-- `GET /api/health` — version, uptime, model manifest.
+- `GET /api/health` — version, uptime, model manifest (the manifest itself was a
+  post-Phase-14 audit fix — the field existed in the response type since Phase 1
+  but nothing populated it until then; it now checks the real files under
+  `dist/models/` rather than assuming them present).
 - `WS /ws` — room join/leave, presence, and a typed relay for `GestureStateMessage`.
   Nothing is persisted. This exists to make the multiplayer architecture *real but
-  unused*, per the brief.
-- Serves the built client in production.
+  unused*, per the brief. Hardened in the same audit pass: an `Origin` check
+  (rejects cross-site WebSocket connections a real browser can't forge the header
+  for), a capped `maxPayload`, and a ping/pong heartbeat that terminates
+  connections that go quiet without a clean close.
+- Serves the built client in production, with COOP/COEP (matching the dev
+  server's own headers — MediaPipe's WASM wants cross-origin isolation) plus a
+  CSP and the standard security headers, also added in that audit pass.
 
 **The server never receives a camera frame or an image.** The WS protocol carries
 only compact gesture/cursor state — enforced by the `packages/shared` types.

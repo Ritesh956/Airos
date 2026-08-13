@@ -78,7 +78,15 @@ export function CameraStage({
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {isDemoMode ? null : state === 'active' || state === 'starting' ? (
+        {/* Based on the real cameraState, not isDemoMode — the camera can
+            be active while Demo Mode is on (mid-transition, or if the
+            auto-stop below ever races), and hiding the only Stop control
+            in that state traps the user with a running camera and no way
+            to turn it off from here. Starting already switches inputSource
+            back to 'camera' itself (see useCamera.start()), so showing
+            Start while in Demo Mode is harmless — clicking it just leaves
+            Demo Mode the same way visiting /cursor cold always has. */}
+        {state === 'active' || state === 'starting' ? (
           <Button variant="secondary" onClick={stop} disabled={state === 'starting'}>
             Stop Camera
           </Button>

@@ -103,9 +103,19 @@ class VisionEngineImpl {
     this.lastCameraActive = cameraActive;
 
     if (!anyActive) {
-      this.teardownSource();
+      // Only do the reset work the first time this branch is reached after
+      // a real source was running — recompute() fires on *every* appStore
+      // change (a Settings slider drag included), and with no consumer
+      // ever having acquired a task, `currentSourceKind` is already null,
+      // so `resetVisionStore()` was previously called repeatedly for no
+      // reason (setTrackingState('idle') is now cheap on its own via its
+      // equality guard, but resetVisionStore() has no such guard and
+      // always writes fpsHistory/etc via a full `.set()`).
+      if (this.currentSourceKind !== null) {
+        this.teardownSource();
+        resetVisionStore();
+      }
       setTrackingState('idle');
-      resetVisionStore();
       return;
     }
 

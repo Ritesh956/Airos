@@ -11,6 +11,22 @@ export function useStore<T>(store: Store<T>): T {
  * selected value actually changes. Necessary for stores like `visionStore`
  * where most components care about one field (e.g. `fps`) and would
  * otherwise re-render on every unrelated field change.
+ *
+ * `selected.current` is deliberately mutated inside `getSnapshot` — that's
+ * what makes `useSyncExternalStore` see a *stable* reference across calls
+ * where nothing actually changed, satisfying its "getSnapshot must be
+ * cached" contract. **This only holds if `isEqual` can actually recognize
+ * "no change" for whatever `selector` returns.** Every current call site
+ * either selects a primitive (default `Object.is` is correct and cheap) or
+ * a reference the store itself keeps stable across unrelated updates
+ * (`s.settings`, `s.cursor`, etc. — the store only replaces those objects
+ * when they themselves change). If you add a selector that computes a
+ * *fresh* object or array literal on every call (e.g. `(s) => [s.a, s.b]`),
+ * the default `Object.is` will never consider two calls equal, `getSnapshot`
+ * will return a new reference every render, and `useSyncExternalStore`
+ * will throw/loop ("getSnapshot should be cached") instead of just
+ * re-rendering more than necessary. Pass a real `isEqual` (shallow-equal,
+ * or field-by-field) for any selector shaped like that.
  */
 export function useStoreSelector<T, S>(
   store: Store<T>,

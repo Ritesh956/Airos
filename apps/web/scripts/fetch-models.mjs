@@ -9,7 +9,7 @@
  * committed to git. This runs automatically via `postinstall`; run it
  * manually with `npm run models:fetch` if public/models/ ever gets wiped.
  */
-import { existsSync, mkdirSync, copyFileSync, createWriteStream } from 'node:fs';
+import { existsSync, mkdirSync, copyFileSync, createWriteStream, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
@@ -60,12 +60,22 @@ const MODELS = [
 function copyWasmRuntime() {
   mkdirSync(wasmDestDir, { recursive: true });
   let copied = 0;
+  let skipped = 0;
   for (const subpath of WASM_SUBPATHS) {
+    const dest = path.join(wasmDestDir, subpath);
+    // These files are ~30MB combined and never change without a
+    // @mediapipe/tasks-vision version bump — re-copying all of them on
+    // every `npm install` (this runs via `postinstall`) was pure waste
+    // once they're already in place.
+    if (existsSync(dest)) {
+      skipped += 1;
+      continue;
+    }
     const resolvedUrl = import.meta.resolve(`@mediapipe/tasks-vision/${subpath}`);
-    copyFileSync(fileURLToPath(resolvedUrl), path.join(wasmDestDir, subpath));
+    copyFileSync(fileURLToPath(resolvedUrl), dest);
     copied += 1;
   }
-  console.log(`[fetch-models] Copied ${copied} WASM runtime files to public/models/wasm/`);
+  console.log(`[fetch-models] Copied ${copied} WASM runtime files to public/models/wasm/ (${skipped} already present).`);
 }
 
 async function downloadModel(model) {
@@ -75,13 +85,31 @@ async function downloadModel(model) {
     return;
   }
   console.log(`[fetch-models] Downloading ${model.name}...`);
-  const response = await fetch(model.url);
-  if (!response.ok || !response.body) {
-    throw new Error(`Failed to download ${model.url}: HTTP ${response.status}`);
-  }
   mkdirSync(modelsDir, { recursive: true });
-  await pipeline(response.body, createWriteStream(dest));
-  console.log(`[fetch-models] Saved ${model.name}`);
+
+  // Downloaded to a `.partial` sibling and renamed into place only once the
+  // full stream has landed on disk — writing straight to `dest` meant a
+  // network failure mid-download (a dropped connection, a killed process)
+  // left a truncated .task file sitting at the real path. The existsSync()
+  // guard above then treated that truncated file as "already present"
+  // forever, on every future `npm install` *and* a manual `npm run
+  // models:fetch` — the exact command this file's own error handler below
+  // recommends running to recover, which would silently do nothing. The
+  // only visible symptom was a landmarker failing to load at runtime with
+  // no obvious link back to this script.
+  const partialDest = `${dest}.partial`;
+  try {
+    const response = await fetch(model.url);
+    if (!response.ok || !response.body) {
+      throw new Error(`Failed to download ${model.url}: HTTP ${response.status}`);
+    }
+    await pipeline(response.body, createWriteStream(partialDest));
+    renameSync(partialDest, dest);
+    console.log(`[fetch-models] Saved ${model.name}`);
+  } catch (error) {
+    if (existsSync(partialDest)) rmSync(partialDest, { force: true });
+    throw error;
+  }
 }
 
 async function main() {

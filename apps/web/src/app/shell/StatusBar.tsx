@@ -3,10 +3,25 @@ import { MODULE_REGISTRY } from '@/app/moduleRegistry';
 import { useStoreSelector } from '@/hooks/useStore';
 import { appStore, toggleCommandPalette, type VoiceState } from '@/state/appStore';
 import { visionStore } from '@/state/visionStore';
+import { interactionStore, type TrackingState } from '@/state/interactionStore';
 import { DEGRADATION_STEPS } from '@/vision/perf/degradationLadder';
 import { StatusPill } from '@/ui/StatusPill';
+import { LiveRegion } from '@/ui/LiveRegion';
 import { CommandIcon, MicIcon, WarningIcon } from '@/ui/icons';
 import { cn } from '@/utils/cn';
+
+/** Announced text for each trackingState — see LiveRegion's doc comment
+ *  for why tracking state (a discrete, infrequent transition) earns a live
+ *  region while continuously-updating readouts deliberately don't. Empty
+ *  for 'idle' since that's the resting state nothing needs announcing on
+ *  arrival at (page load, or after Off is already known from the camera
+ *  pill itself) — only the transitions into/out of active tracking are
+ *  genuinely news. */
+const TRACKING_ANNOUNCEMENT: Record<TrackingState, string> = {
+  idle: '',
+  tracking: 'Hand tracking active.',
+  lost: 'Tracking lost — no hand detected.',
+};
 
 const VOICE_PILL_CONFIG: Record<VoiceState, { label: string; dot: string; pulse?: boolean }> = {
   off: { label: 'Voice Off', dot: 'bg-ink-3' },
@@ -55,10 +70,12 @@ export function StatusBar() {
   const voiceEnabled = useStoreSelector(appStore, (s) => s.settings.voiceEnabled);
   const voiceState = useStoreSelector(appStore, (s) => s.voiceState);
   const degradationLevel = useStoreSelector(visionStore, (s) => s.degradationLevel);
+  const trackingState = useStoreSelector(interactionStore, (s) => s.trackingState);
   const current = MODULE_REGISTRY.find((m) => m.path === location.pathname);
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-surface-1/80 px-5 backdrop-blur-xl">
+      <LiveRegion message={TRACKING_ANNOUNCEMENT[trackingState]} />
       <div>
         <div className="text-sm font-medium text-ink-0">{current?.label ?? 'AIR OS'}</div>
         {current?.tagline && <div className="text-[11px] text-ink-3">{current.tagline}</div>}

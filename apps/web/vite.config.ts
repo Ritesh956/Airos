@@ -21,5 +21,28 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    rollupOptions: {
+      output: {
+        // Three.js + React Three Fiber + Drei are only ever pulled in by
+        // 3D Studio's lazy-loaded route (moduleRegistry.tsx), so this never
+        // adds weight to the eagerly-loaded bundle — but bundled together
+        // with StudioModule's own code, the whole ~900KB chunk (see the
+        // build's own "chunks larger than 500kB" warning) was invalidated
+        // by every rebuild, vendor libraries included, even when only this
+        // app's own Studio code changed. Splitting the rarely-changing
+        // vendor code into its own chunk means a repeat visitor who's
+        // already cached it after an app update only re-downloads the
+        // smaller, actually-changed piece. This doesn't shrink what a
+        // *first-ever* /studio visit downloads — Lighthouse coverage for
+        // that route specifically remains the open item flagged in
+        // CLAUDE.md's audit notes (L14), not something a chunking change
+        // can resolve on its own.
+        manualChunks(id) {
+          if (id.includes('node_modules/three') || id.includes('node_modules/@react-three')) {
+            return 'three_vendor';
+          }
+        },
+      },
+    },
   },
 });

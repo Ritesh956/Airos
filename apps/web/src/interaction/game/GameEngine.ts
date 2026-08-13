@@ -4,6 +4,7 @@ import type { GestureKind, GestureResult } from '@/gestures/types';
 import type { Handedness, HandObservation, VisionFrame } from '@/vision/types';
 import { mirrorLandmark } from '@/utils/coords';
 import { appStore } from '@/state/appStore';
+import { interactionStore, type TrackingState } from '@/state/interactionStore';
 import { getReachBox, mapThroughReachBox } from '@/interaction/cursor/calibration';
 import { Point2DFilter } from '@/interaction/cursor/OneEuroFilter';
 
@@ -42,6 +43,7 @@ class GameEngineImpl {
 
   private lastInputSource = appStore.get().inputSource;
   private lastCameraState = appStore.get().cameraState;
+  private lastTrackingState: TrackingState = interactionStore.get().trackingState;
 
   latest: GamePointerState = { x: null, y: null, visible: false, gesture: 'NONE', hand: null };
 
@@ -53,6 +55,7 @@ class GameEngineImpl {
     ensureGestureBridgeStarted();
     this.syncFilterParams();
     appStore.subscribe(() => this.handleAppStoreChange());
+    interactionStore.subscribe(() => this.handleInteractionStoreChange());
     visionEngine.subscribe((frame) => this.handleFrame(frame));
   }
 
@@ -74,6 +77,31 @@ class GameEngineImpl {
     // frames arrive for a while, or ever — without this, the pointer would
     // freeze in place instead of disappearing. See bugs #2/#8 in CLAUDE.md.
     this.handleHandLost();
+  }
+
+  /**
+   * A second, distinct reset trigger from `handleAppStoreChange` — this
+   * engine can outlive the hand task it depends on the same way
+   * `CursorEngine` can (see that class's identically-named method for the
+   * full explanation): navigating away from Game Mode releases the hand
+   * task without necessarily changing `inputSource`/`cameraState`, so
+   * `VisionEngine.recompute()` tears its source down and stops calling
+   * `handleFrame` forever with nothing for `handleAppStoreChange` to
+   * notice. Without this, returning to Game Mode resumes with `latest`
+   * exactly as it was mid-pinch when the task was released —
+   * `GameCanvas`'s self-driven render loop reads that stale `{visible:
+   * true, gesture: 'PINCH'}` on its very first tick back and fires a
+   * phantom shot (and jumps the ship to a stale x) the user never
+   * triggered. `interactionStore.trackingState` becomes `'idle'` at
+   * exactly the moment recompute() tears the source down, so watching it
+   * here catches the gap `handleAppStoreChange` can't — CLAUDE.md bug #8's
+   * lesson, applied here.
+   */
+  private handleInteractionStoreChange(): void {
+    const { trackingState } = interactionStore.get();
+    if (trackingState === this.lastTrackingState) return;
+    this.lastTrackingState = trackingState;
+    if (trackingState === 'idle') this.handleHandLost();
   }
 
   private pickPrimaryHand(

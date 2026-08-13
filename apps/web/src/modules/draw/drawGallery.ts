@@ -41,8 +41,20 @@ export async function saveDrawing(blob: Blob): Promise<number> {
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const request = tx.objectStore(STORE_NAME).add({ createdAt: Date.now(), blob });
-      request.onsuccess = () => resolve(request.result as number);
+      // Resolved on tx.oncomplete, not request.onsuccess — matching
+      // deleteDrawing's already-correct pattern below. request.onsuccess
+      // only means the individual write was *accepted into* the
+      // transaction, not that the transaction itself committed; a later
+      // abort (quota exceeded, a version-change collision) after that
+      // point used to be silently invisible to the caller, which reported
+      // the drawing as saved when it hadn't actually persisted.
+      let insertedId: number | undefined;
+      request.onsuccess = () => {
+        insertedId = request.result as number;
+      };
       request.onerror = () => reject(request.error ?? new Error('Failed to save the drawing.'));
+      tx.oncomplete = () => resolve(insertedId!);
+      tx.onerror = () => reject(tx.error ?? new Error('Failed to save the drawing.'));
     });
   } finally {
     db.close();

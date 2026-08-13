@@ -67,8 +67,9 @@ palm to lift the brush without losing your place. Undo/redo/clear (Clear
 is itself undoable — it moves the whole canvas onto the redo stack rather
 than discarding it), a six-color palette, and an adjustable brush size sit
 alongside a one-click PNG export and a local IndexedDB gallery of saved
-drawings. Full mouse parity (click-drag to draw) means it's just as usable
-without a camera.
+drawings. Full mouse *and keyboard* parity (click-drag to draw, or focus
+the canvas and use the arrow keys to move, Space to draw, and E to switch
+to the eraser) means it's just as usable without a camera or a mouse.
 
 Presentation drives a slide deck hands-free: swipe left or right to move
 through the deck, thumbs up starts a presenter timer, a fist pauses it,

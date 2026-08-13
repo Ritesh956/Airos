@@ -71,8 +71,25 @@ export function isWireMessage(value: unknown): value is WireMessage {
   );
 }
 
+/** One entry in the health endpoint's model manifest — whether a given
+ *  MediaPipe model asset is actually present in the served build, checked
+ *  against the real file on disk rather than assumed. See `apps/server/src/
+ *  index.ts` and `apps/web/scripts/fetch-models.mjs` (the source of truth
+ *  for which models this build expects). */
+export interface ModelManifestEntry {
+  name: string;
+  present: boolean;
+  sizeBytes: number | null;
+}
+
 export interface HealthResponse {
   status: 'ok';
   version: string;
   uptimeSeconds: number;
+  /** IMPLEMENTATION.md §10: "version, uptime, model manifest." Empty in
+   *  dev (Vite serves the web app itself; this process never sees
+   *  `public/models/` there) — populated once the client's built `dist/`
+   *  is present, which is the only case this process actually serves
+   *  models from. */
+  models: ModelManifestEntry[];
 }

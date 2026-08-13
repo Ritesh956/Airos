@@ -196,16 +196,33 @@ export function GameCanvas({ className }: { className?: string }) {
         gameApi.fire();
       }
     };
+    // Deliberately NOT guarded by isEditableTarget, unlike onKeyDown: a key
+    // can be pressed down while the canvas has focus (recorded into
+    // keysHeld/shiftHeld) and then released after focus has already moved
+    // onto a button or input — filtering the *release* by current target
+    // would leave that key stuck "held" forever, steering the ship or
+    // holding the shield up indefinitely. The guard belongs on keydown
+    // only, where it correctly stops a new key from being recorded while
+    // typing into a control.
     const onKeyUp = (event: KeyboardEvent) => {
-      if (isEditableTarget(event.target)) return;
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') keysHeld.delete(event.key);
       if (event.key === 'Shift') shiftHeld = false;
+    };
+
+    // A held key's keyup event never fires at all if focus leaves the page
+    // entirely (alt-tab, switching windows/tabs) — release-tracking alone
+    // can't catch that. Without this, steering left/right or the shield
+    // could get stuck on indefinitely after the window regains focus.
+    const onBlur = () => {
+      keysHeld.clear();
+      shiftHeld = false;
     };
 
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('click', onClick);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -214,6 +231,7 @@ export function GameCanvas({ className }: { className?: string }) {
       canvas.removeEventListener('click', onClick);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
     };
   }, []);
 

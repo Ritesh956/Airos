@@ -4,6 +4,7 @@ import type { GestureResult } from '@/gestures/types';
 import type { Handedness, HandObservation, VisionFrame } from '@/vision/types';
 import { mirrorLandmark } from '@/utils/coords';
 import { appStore } from '@/state/appStore';
+import { interactionStore, type TrackingState } from '@/state/interactionStore';
 import { getReachBox, mapThroughReachBox } from '@/interaction/cursor/calibration';
 
 /**
@@ -57,6 +58,7 @@ class StudioEngineImpl {
   private started = false;
   private lastInputSource = appStore.get().inputSource;
   private lastCameraState = appStore.get().cameraState;
+  private lastTrackingState: TrackingState = interactionStore.get().trackingState;
 
   /** Idempotent — safe to call from every component that wants Studio's
    *  gesture pointers. */
@@ -65,6 +67,7 @@ class StudioEngineImpl {
     this.started = true;
     ensureGestureBridgeStarted();
     appStore.subscribe(() => this.handleAppStoreChange());
+    interactionStore.subscribe(() => this.handleInteractionStoreChange());
     visionEngine.subscribe((frame) => this.handleFrame(frame));
   }
 
@@ -78,6 +81,34 @@ class StudioEngineImpl {
     // or ever — without this, a pointer/pinch state would freeze in place
     // instead of disappearing, and a scene object could be left mid-drag
     // forever. See bugs #2/#8 in CLAUDE.md.
+    this.resetTracking();
+  }
+
+  /**
+   * A second, distinct reset trigger from `handleAppStoreChange` — this
+   * engine can outlive the hand task it depends on the same way
+   * `CursorEngine` can (see that class's identically-named method for the
+   * full explanation): navigating away from 3D Studio releases the hand
+   * task without necessarily changing `inputSource`/`cameraState`, so
+   * `VisionEngine.recompute()` tears its source down and stops calling
+   * `handleFrame` forever with nothing for `handleAppStoreChange` to
+   * notice. Without this, returning to Studio resumes with `latest` exactly
+   * as it was mid-pinch when the task was released —
+   * `StudioScene.tsx`'s `useFrame` loop reads that stale pinching pointer
+   * on its very first tick back and can grab whatever object it's still
+   * hovering, mid-air, with no gesture behind it.
+   * `interactionStore.trackingState` becomes `'idle'` at exactly the moment
+   * recompute() tears the source down, so watching it here catches the gap
+   * `handleAppStoreChange` can't — CLAUDE.md bug #8's lesson, applied here.
+   */
+  private handleInteractionStoreChange(): void {
+    const { trackingState } = interactionStore.get();
+    if (trackingState === this.lastTrackingState) return;
+    this.lastTrackingState = trackingState;
+    if (trackingState === 'idle') this.resetTracking();
+  }
+
+  private resetTracking(): void {
     this.preferredPrimary = null;
     this.preferredSecondary = null;
     this.latest = { primary: null, secondary: null };

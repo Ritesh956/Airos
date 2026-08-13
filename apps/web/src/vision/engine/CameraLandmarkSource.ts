@@ -1,5 +1,5 @@
 import { cameraManager } from '@/vision/camera/CameraManager';
-import { appStore } from '@/state/appStore';
+import { appStore, setCameraState } from '@/state/appStore';
 import { detectHands, preloadHandLandmarker } from '@/vision/hand/HandLandmarkerService';
 import { detectFace, preloadFaceLandmarker } from '@/vision/face/FaceLandmarkerService';
 import { detectPose, preloadPoseLandmarker } from '@/vision/pose/PoseLandmarkerService';
@@ -76,6 +76,9 @@ export class CameraLandmarkSource implements LandmarkSource {
   private tasks: VisionTaskRequest = { ...NO_TASKS };
   private armed = false;
   private loop: LoopHandle = null;
+  /** Bumped every time `cancelLoop()` runs — see `tick()`'s doc comment for
+   *  the race this closes. */
+  private loopGeneration = 0;
   private listeners = new Set<(frame: VisionFrame) => void>();
   private unsubscribeAppStore: (() => void) | null = null;
 
@@ -143,16 +146,35 @@ export class CameraLandmarkSource implements LandmarkSource {
   }
 
   private scheduleNext(video: HTMLVideoElement): void {
+    const generation = this.loopGeneration;
     if ('requestVideoFrameCallback' in video) {
-      const id = video.requestVideoFrameCallback(() => this.tick(video));
+      const id = video.requestVideoFrameCallback(() => this.tick(video, generation));
       this.loop = { kind: 'vfc', id, video };
     } else {
-      const id = requestAnimationFrame(() => this.tick(video));
+      const id = requestAnimationFrame(() => this.tick(video, generation));
       this.loop = { kind: 'raf', id };
     }
   }
 
   private cancelLoop(): void {
+    // Bumped even when `this.loop` is already null — this is what lets a
+    // `tick()` still in flight (awaiting inference) notice, once it
+    // resumes, that its loop lifecycle has been superseded. Without it: if
+    // `cameraState` cycles inactive-then-active-again while a tick is
+    // still awaiting (e.g. the degradation ladder's own
+    // downgradeResolution()/restoreDefaultResolution() stop+start restart),
+    // `syncWithCameraState()` calls `cancelLoop()` (nulling `this.loop`)
+    // and then, on the resumed 'active' state, `scheduleNext()` again —
+    // starting a fresh loop A. The original in-flight tick then *also*
+    // finishes and calls `scheduleNext()` at the bottom of its own
+    // execution, starting loop B and silently overwriting `this.loop`
+    // (which pointed at A) with B's handle. Loop A is now orphaned: still
+    // running, calling tick() on its own cadence, but no longer referenced
+    // by anything `cancelLoop()` can find — a future stop() only cancels
+    // B, and inference silently runs twice per frame forever. The
+    // generation check in `tick()` is what stops the stale tick from
+    // scheduling that second, duplicate loop.
+    this.loopGeneration++;
     if (this.loop?.kind === 'vfc') {
       this.loop.video.cancelVideoFrameCallback(this.loop.id);
     } else if (this.loop?.kind === 'raf') {
@@ -161,7 +183,7 @@ export class CameraLandmarkSource implements LandmarkSource {
     this.loop = null;
   }
 
-  private async tick(video: HTMLVideoElement): Promise<void> {
+  private async tick(video: HTMLVideoElement, generation: number): Promise<void> {
     const frameStart = performance.now();
     let hands: HandObservation[] = [];
     let face: FaceObservation | null = null;
@@ -176,20 +198,48 @@ export class CameraLandmarkSource implements LandmarkSource {
     if (this.frameSkipEnabled) this.skipCounter++;
 
     if (shouldInfer) {
-      if (this.tasks.hand) {
-        const result = await detectHands(video, Math.round(frameStart));
-        hands = result.hands;
-        inferenceMs += result.inferenceMs;
-      }
-      if (this.tasks.face) {
-        const result = await detectFace(video, Math.round(frameStart));
-        face = result.face;
-        inferenceMs += result.inferenceMs;
-      }
-      if (this.tasks.pose) {
-        const result = await detectPose(video, Math.round(frameStart));
-        pose = result.pose;
-        inferenceMs += result.inferenceMs;
+      try {
+        if (this.tasks.hand) {
+          const result = await detectHands(video, Math.round(frameStart));
+          hands = result.hands;
+          inferenceMs += result.inferenceMs;
+        }
+        if (this.tasks.face) {
+          const result = await detectFace(video, Math.round(frameStart));
+          face = result.face;
+          inferenceMs += result.inferenceMs;
+        }
+        if (this.tasks.pose) {
+          const result = await detectPose(video, Math.round(frameStart));
+          pose = result.pose;
+          inferenceMs += result.inferenceMs;
+        }
+      } catch (error) {
+        // A model failed to load or run — a failed WASM/model fetch, a GPU
+        // delegate failure, anything detect*() can throw. Without this
+        // catch, the rejection propagates out of tick() (invoked as a
+        // discarded promise from requestVideoFrameCallback/
+        // requestAnimationFrame — nothing awaits it), which skips the
+        // scheduleNext() call at the bottom of this method entirely: the
+        // loop silently stops forever, cameraState stays 'active', the
+        // preview keeps showing live video, and every readout freezes with
+        // no error anywhere. Stopping the camera outright (rather than just
+        // this loop) surfaces it through the same error taxonomy a
+        // getUserMedia failure uses — CAMERA_ERROR_MESSAGES has carried a
+        // 'model-load-failed' entry since Phase 1, but nothing ever
+        // assigned it before this. Retrying is then just Start Camera
+        // again, the same recovery path any other camera error uses.
+        console.error('[AIR OS] Vision inference failed — stopping the camera.', error);
+        cameraManager.stop();
+        setCameraState('error', 'model-load-failed');
+        // cameraManager.stop() already synchronously drove cameraState to
+        // 'off', which syncWithCameraState() (an appStore subscriber) has
+        // already reacted to via cancelLoop() by the time this line runs —
+        // this.loop is already null and loopGeneration already bumped.
+        // Only touch it directly in the (defensive) case that didn't
+        // happen, and only if this tick's own loop is still current.
+        if (generation === this.loopGeneration) this.loop = null;
+        return;
       }
       this.lastObservations = { hands, face, pose };
     } else {
@@ -214,7 +264,16 @@ export class CameraLandmarkSource implements LandmarkSource {
 
     for (const listener of this.listeners) listener(frame);
 
-    // Re-check armed/camera state after the await above — stop() or a
+    // A cancelLoop() (and therefore a fresh scheduleNext() from
+    // syncWithCameraState) may already have happened while the awaits
+    // above were in flight — see cancelLoop()'s doc comment for the
+    // duplicate-loop race this specifically prevents. When that's
+    // happened, `this.loop` belongs to whichever newer loop is current
+    // now, not to this stale tick — leave it alone entirely rather than
+    // rescheduling a second, redundant loop or nulling out the real one.
+    if (generation !== this.loopGeneration) return;
+
+    // Re-check armed/camera state after the awaits above — stop() or a
     // camera state change could have happened mid-detection.
     if (this.armed && appStore.get().cameraState === 'active') {
       this.scheduleNext(video);

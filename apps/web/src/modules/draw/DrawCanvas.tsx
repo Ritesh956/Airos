@@ -9,6 +9,10 @@ import { cn } from '@/utils/cn';
 const TOOL_SUMMARY_INTERVAL_MS = 100; // matches the app's cold-path publish rate elsewhere (Cursor/gestureBridge)
 const ERASE_CURSOR_COLOR = '#f87171';
 const IDLE_CURSOR_COLOR = '#6b7280';
+// Normalized units/sec while an arrow key is held — same constant shape as
+// GameCanvas.tsx's KEYBOARD_MOVE_SPEED, tuned slower here since drawing
+// benefits from finer control than steering a ship does.
+const KEYBOARD_CURSOR_SPEED = 0.5;
 
 const publishToolSummary = throttle(setDrawToolSummary, TOOL_SUMMARY_INTERVAL_MS);
 
@@ -80,6 +84,16 @@ export interface DrawCanvasHandle {
  * from Air Draw and back doesn't lose a drawing, same as 3D Studio's
  * `studioTransforms`. Only an in-progress stroke is at risk on unmount,
  * so it's committed (not discarded) in the cleanup effect below.
+ *
+ * Full keyboard operation (§1.6): previously only Undo/Redo/Clear had a
+ * keyboard path — the drawing action itself had none, unlike every other
+ * gesture-driven module in the app. Focusing the canvas (Tab, or a click)
+ * reveals a keyboard cursor moved by the arrow keys (the same
+ * keysHeld-plus-per-frame-movement pattern `GameCanvas.tsx` already uses
+ * for ship steering); holding Space draws or erases at that position,
+ * exactly like a held PINCH/FIST would, and 'e' toggles which of the two
+ * Space performs — mirroring a conventional paint tool's brush/eraser
+ * switch rather than a held modifier chord.
  */
 export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(function DrawCanvas(
   { className },
@@ -87,7 +101,13 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gestureDrawingRef = useRef(false);
-  const activeInputRef = useRef<'gesture' | 'mouse' | null>(null);
+  const activeInputRef = useRef<'gesture' | 'mouse' | 'keyboard' | null>(null);
+  const keyboardFocusedRef = useRef(false);
+  const keyboardPosRef = useRef({ x: 0.5, y: 0.5 });
+  const keysHeldRef = useRef(new Set<string>());
+  const spaceHeldRef = useRef(false);
+  const keyboardEraseRef = useRef(false);
+  const keyboardDrawingRef = useRef(false);
 
   useImperativeHandle(forwardedRef, () => ({ getCanvas: () => canvasRef.current }), []);
 
@@ -107,8 +127,13 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
     resizeObserver.observe(canvas);
 
     let rafId: number;
+    let lastFrameAt = performance.now();
 
     const renderFrame = () => {
+      const now = performance.now();
+      const dtMs = Math.min(100, now - lastFrameAt); // clamp so a backgrounded tab doesn't jump keyboard movement
+      lastFrameAt = now;
+
       const { width, height } = canvas;
       const dpr = window.devicePixelRatio || 1;
       ctx.clearRect(0, 0, width, height);
@@ -120,7 +145,10 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
       const pointer = drawEngine.latest;
       const tool = toolForGesture(pointer);
 
-      if (activeInputRef.current !== 'mouse') {
+      // Excludes 'keyboard' too, not just 'mouse' — the three input sources
+      // are mutually exclusive, the same way mouse already excluded gesture
+      // from also driving a stroke concurrently.
+      if (activeInputRef.current !== 'mouse' && activeInputRef.current !== 'keyboard') {
         if (tool === 'draw') {
           if (!gestureDrawingRef.current) {
             strokesApi.beginStroke(pointer.x!, pointer.y!, drawStore.get().color, drawStore.get().brushSize);
@@ -142,7 +170,7 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
         publishToolSummary(tool, pointer.hand);
       }
 
-      if (pointer.visible && activeInputRef.current !== 'mouse') {
+      if (pointer.visible && activeInputRef.current !== 'mouse' && activeInputRef.current !== 'keyboard') {
         const { color, brushSize } = drawStore.get();
         const minSide = Math.min(width, height);
         const radius =
@@ -152,6 +180,63 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
         ctx.beginPath();
         ctx.arc(pointer.x! * width, pointer.y! * height, radius, 0, Math.PI * 2);
         ctx.stroke();
+      }
+
+      // Keyboard drawing (§1.6 parity — see the module doc comment): only
+      // relevant while the canvas actually has focus, and mutually
+      // exclusive with mouse/gesture the same way those exclude each other.
+      if (keyboardFocusedRef.current && activeInputRef.current !== 'mouse' && activeInputRef.current !== 'gesture') {
+        const keys = keysHeldRef.current;
+        const dx = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
+        const dy = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
+        if (dx !== 0 || dy !== 0) {
+          const pos = keyboardPosRef.current;
+          pos.x = Math.min(1, Math.max(0, pos.x + dx * KEYBOARD_CURSOR_SPEED * (dtMs / 1000)));
+          pos.y = Math.min(1, Math.max(0, pos.y + dy * KEYBOARD_CURSOR_SPEED * (dtMs / 1000)));
+        }
+
+        const keyboardTool: DrawTool = spaceHeldRef.current ? (keyboardEraseRef.current ? 'erase' : 'draw') : 'idle';
+        const { x: kx, y: ky } = keyboardPosRef.current;
+
+        if (keyboardTool === 'draw') {
+          if (!keyboardDrawingRef.current) {
+            strokesApi.beginStroke(kx, ky, drawStore.get().color, drawStore.get().brushSize);
+            keyboardDrawingRef.current = true;
+            activeInputRef.current = 'keyboard';
+          } else {
+            strokesApi.appendPoint(kx, ky);
+          }
+        } else if (keyboardDrawingRef.current) {
+          strokesApi.commitStroke();
+          keyboardDrawingRef.current = false;
+          if (activeInputRef.current === 'keyboard') activeInputRef.current = null;
+        }
+
+        if (keyboardTool === 'erase') {
+          strokesApi.eraseNear(kx, ky, strokesApi.ERASE_RADIUS);
+        }
+
+        publishToolSummary(keyboardTool, null);
+
+        const { color, brushSize } = drawStore.get();
+        const minSide = Math.min(width, height);
+        const radius =
+          keyboardTool === 'erase' ? strokesApi.ERASE_RADIUS * minSide : Math.max(2, (brushSize * dpr) / 2);
+        ctx.strokeStyle =
+          keyboardTool === 'erase' ? ERASE_CURSOR_COLOR : keyboardTool === 'draw' ? color : IDLE_CURSOR_COLOR;
+        ctx.lineWidth = Math.max(1, dpr);
+        ctx.beginPath();
+        ctx.arc(kx * width, ky * height, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        // A ring around the dot distinguishes "the keyboard cursor is here,
+        // idle" from a same-sized gesture/mouse cursor — otherwise a
+        // stationary keyboard-focused canvas looks identical to one with an
+        // (invisible, off-camera) tracked hand paused over the same spot.
+        if (keyboardTool === 'idle') {
+          ctx.beginPath();
+          ctx.arc(kx * width, ky * height, radius + 4 * dpr, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
 
       rafId = requestAnimationFrame(renderFrame);
@@ -177,10 +262,58 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
       activeInputRef.current = null;
     };
 
+    const ARROW_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+
+    // Scoped to the canvas element itself, not window — unlike
+    // GameCanvas.tsx's window-level listeners (which need an
+    // isEditableTarget guard to avoid hijacking arrow keys/space from the
+    // rest of the page), attaching directly to a focusable canvas means
+    // these only ever fire while the canvas itself is the focused element,
+    // with no separate guard needed.
+    const onCanvasFocus = () => {
+      keyboardFocusedRef.current = true;
+    };
+    const onCanvasBlur = () => {
+      // A key's keyup never fires if focus leaves before it's released
+      // (Tab away mid-press) — clear held state outright rather than
+      // leaving the keyboard cursor "stuck" moving or drawing after focus
+      // returns. Same reasoning as GameCanvas.tsx's window-blur handler.
+      keyboardFocusedRef.current = false;
+      keysHeldRef.current.clear();
+      spaceHeldRef.current = false;
+      if (activeInputRef.current === 'keyboard') {
+        strokesApi.commitStroke();
+        keyboardDrawingRef.current = false;
+        activeInputRef.current = null;
+      }
+    };
+    const onCanvasKeyDown = (event: KeyboardEvent) => {
+      if (ARROW_KEYS.has(event.key)) {
+        // Without this, arrow keys would also scroll the page while the
+        // canvas has focus — same reasoning as GameCanvas.tsx's identical
+        // preventDefault for ship steering.
+        event.preventDefault();
+        keysHeldRef.current.add(event.key);
+      } else if (event.key === ' ') {
+        event.preventDefault();
+        spaceHeldRef.current = true;
+      } else if (event.key === 'e' || event.key === 'E') {
+        keyboardEraseRef.current = !keyboardEraseRef.current;
+      }
+    };
+    const onCanvasKeyUp = (event: KeyboardEvent) => {
+      if (ARROW_KEYS.has(event.key)) keysHeldRef.current.delete(event.key);
+      else if (event.key === ' ') spaceHeldRef.current = false;
+    };
+
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', endMouseStroke);
     canvas.addEventListener('pointercancel', endMouseStroke);
+    canvas.addEventListener('focus', onCanvasFocus);
+    canvas.addEventListener('blur', onCanvasBlur);
+    canvas.addEventListener('keydown', onCanvasKeyDown);
+    canvas.addEventListener('keyup', onCanvasKeyUp);
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -189,9 +322,14 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', endMouseStroke);
       canvas.removeEventListener('pointercancel', endMouseStroke);
+      canvas.removeEventListener('focus', onCanvasFocus);
+      canvas.removeEventListener('blur', onCanvasBlur);
+      canvas.removeEventListener('keydown', onCanvasKeyDown);
+      canvas.removeEventListener('keyup', onCanvasKeyUp);
 
-      // A pinch (or mouse drag) mid-navigation-away shouldn't silently lose
-      // the stroke — commit whatever's in progress rather than discarding it.
+      // A pinch (or mouse drag, or held-Space keyboard stroke) mid-
+      // navigation-away shouldn't silently lose the stroke — commit
+      // whatever's in progress rather than discarding it.
       if (activeInputRef.current !== null) strokesApi.commitStroke();
       publishToolSummary.cancel();
       resetDrawToolSummary();
@@ -201,9 +339,13 @@ export const DrawCanvas = forwardRef<DrawCanvasHandle, { className?: string }>(f
   return (
     <canvas
       ref={canvasRef}
-      role="img"
-      aria-label="Drawing surface. Click and drag with a mouse, or pinch in the air over the camera, to paint."
-      className={cn('h-full w-full cursor-crosshair touch-none', className)}
+      tabIndex={0}
+      aria-label="Drawing surface. Click and drag with a mouse, pinch in the air over the camera, or focus this canvas and use the arrow keys to move the cursor, Space to draw, and E to switch between drawing and erasing."
+      className={cn(
+        'h-full w-full cursor-crosshair touch-none outline-none',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-signal-400',
+        className,
+      )}
     />
   );
 });

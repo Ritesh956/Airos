@@ -129,6 +129,16 @@ export function resetVisionStore(): void {
     totalMs: 0,
     source: null,
     fpsHistory: [],
-    degradationLevel: 0,
+    // Preserved, not zeroed — degradationLevel is exclusively owned by
+    // vision/perf/DegradationController.ts's own lifecycle (setDegradationLevel),
+    // orthogonal to "hand/face/pose data stopped arriving." Zeroing it here
+    // used to flicker the perf pill/banner off and back during the ladder's
+    // own self-triggered camera restart (downgradeResolution/
+    // restoreDefaultResolution cycle cameraState through 'off', which also
+    // runs this reset) even though the ladder's real level hadn't changed —
+    // DegradationController.resolutionChangeInFlight already guards its own
+    // evaluate() against reacting to that cycle, but this reset is a
+    // separate call site that guard doesn't cover.
+    degradationLevel: visionStore.get().degradationLevel,
   });
 }

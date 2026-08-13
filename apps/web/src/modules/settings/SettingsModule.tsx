@@ -6,6 +6,7 @@ import { Toggle } from '@/ui/Toggle';
 import { StatusPill } from '@/ui/StatusPill';
 import { Readout } from '@/ui/Readout';
 import { Button } from '@/ui/Button';
+import { Slider } from '@/ui/Slider';
 import { useCamera } from '@/hooks/useCamera';
 import { checkBrowserSupport } from '@/utils/browserSupport';
 import { VOICE_ERROR_MESSAGES } from '@/interaction/voice/errors';
@@ -62,6 +63,19 @@ export default function SettingsModule() {
             </Button>
           )}
         </div>
+      </Panel>
+
+      <Panel eyebrow="Gesture Recognition" title="Stability window">
+        <Slider
+          label="Frames to confirm a gesture"
+          description="How many consecutive frames a pose must hold before it's reported — higher resists flicker near a decision boundary but adds lag; lower reacts faster but can misfire. Applies to every module (Cursor, Draw, Studio, Game, Presentation), not just one — see IMPLEMENTATION.md §7."
+          value={settings.gestureStabilityFrames}
+          min={1}
+          max={8}
+          step={1}
+          formatValue={(v) => `${v} frame${v === 1 ? '' : 's'}`}
+          onChange={(v) => updateSettings({ gestureStabilityFrames: v })}
+        />
       </Panel>
 
       <Panel eyebrow="Air Cursor" title="System-wide pointer">

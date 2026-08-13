@@ -26,41 +26,49 @@ function colorForState(gesture: string, dragging: boolean): string {
  * of where in the tree it's mounted, and marked pointer-events: none so
  * it never itself intercepts the clicks it's simulating on the element
  * underneath it.
+ *
+ * Driven by `cursorEngine.subscribe()` — its own push notification, fired
+ * on every real vision frame while a hand is tracked and once more
+ * whenever it's lost — rather than a perpetual `requestAnimationFrame`
+ * loop. This component is mounted for the app's entire lifetime (AppShell,
+ * every route), so a self-driven rAF loop ran and mutated DOM style
+ * properties every animation frame regardless of whether Air Cursor was
+ * even enabled or a hand had ever been in frame, meaning the app never
+ * reached a genuinely idle state on any page. Subscribing means zero
+ * ongoing work exists when nothing is happening, while the ring still
+ * updates on every frame that actually matters — the same trade
+ * `HandSkeletonOverlay` already makes against `visionEngine`'s hot-path
+ * push instead of running its own loop.
  */
 export function AirCursorOverlay() {
   const ringRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let rafId: number;
-
-    const loop = () => {
+    const draw = () => {
       const state = cursorEngine.latest;
       const ring = ringRef.current;
       const dot = dotRef.current;
+      if (!ring || !dot) return;
 
-      if (ring && dot) {
-        const visible = state.visible && state.x !== null && state.y !== null;
-        ring.style.opacity = visible ? '1' : '0';
-        if (visible) {
-          const scale = state.dragging ? 1.3 : 1;
-          // One assignment, translate + scale together — setting
-          // .style.transform replaces the whole property, so building it
-          // in two places would silently drop whichever wasn't included
-          // in the final write.
-          ring.style.transform = `translate3d(${state.x}px, ${state.y}px, 0) translate(-50%, -50%) scale(${scale})`;
-          const color = colorForState(state.gesture, state.dragging);
-          ring.style.borderColor = color;
-          dot.style.backgroundColor = color;
-          ring.style.boxShadow = `0 0 16px -2px ${color}`;
-        }
+      const visible = state.visible && state.x !== null && state.y !== null;
+      ring.style.opacity = visible ? '1' : '0';
+      if (visible) {
+        const scale = state.dragging ? 1.3 : 1;
+        // One assignment, translate + scale together — setting
+        // .style.transform replaces the whole property, so building it
+        // in two places would silently drop whichever wasn't included
+        // in the final write.
+        ring.style.transform = `translate3d(${state.x}px, ${state.y}px, 0) translate(-50%, -50%) scale(${scale})`;
+        const color = colorForState(state.gesture, state.dragging);
+        ring.style.borderColor = color;
+        dot.style.backgroundColor = color;
+        ring.style.boxShadow = `0 0 16px -2px ${color}`;
       }
-
-      rafId = requestAnimationFrame(loop);
     };
 
-    rafId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(rafId);
+    draw();
+    return cursorEngine.subscribe(draw);
   }, []);
 
   return createPortal(

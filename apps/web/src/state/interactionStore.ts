@@ -56,7 +56,17 @@ export const interactionStore = createStore<InteractionState>({
   gestureHistory: [],
 });
 
+/**
+ * Equality-guarded like `setVoiceState`/`setDegradationLevel` (same
+ * `appStore.ts`/`visionStore.ts` pattern) — `VisionEngine.handleFrame()`
+ * calls this on every single vision frame (30-60Hz), not throttled, so an
+ * unconditional write here would notify every `interactionStore` subscriber
+ * at camera frame rate even though the value itself only actually changes a
+ * couple of times a second. This is exactly the cost the cold-path throttle
+ * discipline elsewhere in the app exists to avoid.
+ */
 export function setTrackingState(state: TrackingState): void {
+  if (interactionStore.get().trackingState === state) return;
   interactionStore.update({ trackingState: state });
 }
 
@@ -71,8 +81,15 @@ export function setCursor(patch: Partial<CursorState>): void {
 /** 3D Studio (Phase 6): which scene object is currently selected, if any.
  *  Written by both the gesture-driven raycast and the mouse/keyboard
  *  fallback paths — a single source of truth for "what's selected" that
- *  any module can read reactively via interactionStore. */
+ *  any module can read reactively via interactionStore.
+ *
+ *  Equality-guarded for the same reason `setTrackingState` is:
+ *  `StudioScene.tsx`'s `useFrame` loop calls this every frame while a
+ *  pinch is held over empty space (the raycast misses, so it writes `null`
+ *  on every tick) — without the guard, that's a full store write and
+ *  notify at up to 60Hz for a value that isn't actually changing. */
 export function setSelectedObjectId(id: string | null): void {
+  if (interactionStore.get().selectedObjectId === id) return;
   interactionStore.update({ selectedObjectId: id });
 }
 

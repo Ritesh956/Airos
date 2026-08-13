@@ -87,15 +87,18 @@ export function LandmarkTable() {
               </div>
               <div className="max-h-72 overflow-x-auto overflow-y-auto rounded-lg border border-border">
                 <table className="w-full min-w-[420px] text-left text-xs">
+                  <caption className="sr-only">
+                    All 21 tracked landmarks for the {mirrorHandedness(hand.handedness).toLowerCase()} hand
+                  </caption>
                   <thead className="sticky top-0 bg-surface-2 text-[10px] uppercase tracking-wide text-ink-3">
                     <tr>
-                      <th className="px-2 py-1.5">#</th>
-                      <th className="px-2 py-1.5">Landmark</th>
-                      <th className="px-2 py-1.5">X</th>
-                      <th className="px-2 py-1.5">Y</th>
-                      <th className="px-2 py-1.5">Z</th>
-                      <th className="px-2 py-1.5">Mirrored X</th>
-                      <th className="px-2 py-1.5">Visibility</th>
+                      <th scope="col" className="px-2 py-1.5">#</th>
+                      <th scope="col" className="px-2 py-1.5">Landmark</th>
+                      <th scope="col" className="px-2 py-1.5">X</th>
+                      <th scope="col" className="px-2 py-1.5">Y</th>
+                      <th scope="col" className="px-2 py-1.5">Z</th>
+                      <th scope="col" className="px-2 py-1.5">Mirrored X</th>
+                      <th scope="col" className="px-2 py-1.5">Visibility</th>
                     </tr>
                   </thead>
                   <tbody className="text-mono-tabular text-ink-1">

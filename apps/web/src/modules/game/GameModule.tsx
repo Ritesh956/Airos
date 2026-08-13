@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { CameraStage } from '@/modules/shared/CameraStage';
 import { GameCanvas } from './GameCanvas';
 import { useGameEngine } from '@/hooks/useGameEngine';
@@ -10,6 +11,7 @@ import { pause, restart, startOrResume } from './gameState';
 import { Panel } from '@/ui/Panel';
 import { Readout } from '@/ui/Readout';
 import { Button } from '@/ui/Button';
+import { LiveRegion } from '@/ui/LiveRegion';
 
 const HAND_TASK = { hand: true, face: false, pose: false };
 
@@ -38,8 +40,42 @@ export default function GameModule() {
 
   const game = useStore(gameStore);
 
+  // Score, lives, game-over, and pause/resume all used to change with no
+  // announcement of any kind — a screen reader user got no signal any of
+  // it happened. Deliberately narrower than "announce every gameStore
+  // change": score itself isn't announced on every kill (that could fire
+  // several times a second in a busy round, which is worse than silence —
+  // see LiveRegion's own doc comment), only the handful of genuinely
+  // discrete, meaningful transitions below.
+  const [announcement, setAnnouncement] = useState('');
+  const prevStatusRef = useRef(game.status);
+  const prevLivesRef = useRef(game.lives);
+
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    const prevLives = prevLivesRef.current;
+    prevStatusRef.current = game.status;
+    prevLivesRef.current = game.lives;
+
+    if (game.status !== prevStatus) {
+      if (game.status === 'gameover') {
+        setAnnouncement(`Game over. Final score ${game.score}.`);
+      } else if (game.status === 'playing') {
+        setAnnouncement(prevStatus === 'paused' ? 'Resumed.' : 'Game started.');
+      } else if (game.status === 'paused') {
+        setAnnouncement('Paused.');
+      }
+      return;
+    }
+
+    if (game.status === 'playing' && game.lives < prevLives) {
+      setAnnouncement(`Life lost — ${game.lives} remaining.`);
+    }
+  }, [game.status, game.lives, game.score]);
+
   return (
     <div className="flex flex-col gap-6">
+      <LiveRegion message={announcement} />
       <section>
         <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-[11px] text-ink-2">
           <span className="h-1.5 w-1.5 rounded-full bg-signal-400 animate-pulse-slow" />

@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { cameraManager } from '@/vision/camera/CameraManager';
 
 interface Props {
   children: ReactNode;
@@ -23,6 +24,14 @@ interface State {
  * available behind a disclosure for anyone (a developer, or a user filing
  * a bug) who actually wants it — the honesty stays, just not as the
  * headline.
+ *
+ * The screen's own copy asserts the camera has already been stopped —
+ * previously that was aspirational, not actual: nothing here ever called
+ * `cameraManager.stop()`, so a render crash while tracking was live left the
+ * stream (and the OS camera indicator) running behind this full-screen
+ * overlay. `componentDidCatch` now makes the sentence true instead of
+ * deleting it; `cameraManager.stop()` is idempotent (see its own doc
+ * comment) so calling it when nothing was running is a harmless no-op.
  */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null, showDetails: false };
@@ -33,6 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('[AIR OS] Unhandled error in render tree:', error, info.componentStack);
+    cameraManager.stop();
   }
 
   private reset = () => this.setState({ error: null, showDetails: false });

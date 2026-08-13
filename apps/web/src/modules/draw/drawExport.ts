@@ -28,5 +28,13 @@ export async function downloadCanvasAsPng(canvas: HTMLCanvasElement, filename?: 
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Revoking on the very next tick (rather than synchronously right after
+  // click()) is deliberate: Chrome tolerates an immediate revoke, but
+  // Firefox and Safari can still be resolving where to save the file at
+  // that point and cancel the download outright if the URL is already
+  // gone. A short delay is the standard workaround (the same one
+  // FileSaver.js and similar libraries use) — long enough for the browser
+  // to have captured the blob's data, short enough not to meaningfully
+  // delay reclaiming the memory.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
