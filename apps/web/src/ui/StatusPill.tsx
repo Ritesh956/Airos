@@ -9,11 +9,17 @@ const CONFIG: Record<CameraState, { label: string; dot: string; pulse?: boolean 
   error: { label: 'Camera Error', dot: 'bg-danger-500' },
 };
 
+/** A presentational chip only — no `role="status"`. It used to carry one,
+ *  but this component renders twice on every module page (once in
+ *  `StatusBar`, once as a module Panel's own `action`), so every camera
+ *  transition was announced twice to screen reader users, back to back
+ *  (CLAUDE.md UI/UX audit finding #13). `StatusBar` now owns the single
+ *  live announcement of camera state, the same way it already owns
+ *  tracking-state announcements — see its `CAMERA_ANNOUNCEMENT` map. */
 export function StatusPill({ state, className }: { state: CameraState; className?: string }) {
   const cfg = CONFIG[state];
   return (
     <span
-      role="status"
       className={cn(
         'inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-xs text-ink-1',
         className,

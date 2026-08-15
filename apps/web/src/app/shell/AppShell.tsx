@@ -5,6 +5,7 @@ import { Nav } from './Nav';
 import { StatusBar } from './StatusBar';
 import { CommandPalette } from './CommandPalette';
 import { useNavigationCommands } from './useNavigationCommands';
+import { useCameraCommands } from './useCameraCommands';
 import { useGlobalKeyboardCommands } from '@/hooks/useGlobalKeyboardCommands';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
@@ -14,6 +15,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { DegradationBanner } from './DegradationBanner';
 import { SkipLink } from './SkipLink';
 import { AirCursorOverlay } from '@/modules/cursor/AirCursorOverlay';
+import { MethodDefinitions } from '@/ui/MethodDefinitions';
 
 function ModuleFallback() {
   return (
@@ -30,6 +32,7 @@ export function AppShell() {
   const isFirstRender = useRef(true);
 
   useNavigationCommands();
+  useCameraCommands();
   useGlobalKeyboardCommands();
   useVoiceCommands();
   usePerfDegradation();
@@ -61,10 +64,15 @@ export function AppShell() {
   }, [location.pathname]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-surface-0 text-ink-0">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-surface-0 text-ink-0 sm:flex-row">
+      <MethodDefinitions />
       <SkipLink />
       <Nav />
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* order-1/sm:order-2 pairs with Nav's own order-2/sm:order-1 — on
+          mobile this content column comes first (nav is a bottom bar
+          below it); at sm and up the nav rail comes first, on the left,
+          matching the original desktop layout exactly. */}
+      <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col sm:order-2">
         <StatusBar />
         <DegradationBanner />
         <main

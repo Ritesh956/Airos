@@ -1,6 +1,24 @@
 @import 'tailwindcss';
 
 /*
+ * Self-hosted via @fontsource — the app's own tokens name 'Inter' and
+ * 'JetBrains Mono', but until this import existed nothing in the app ever
+ * loaded either as a web font: no @font-face, no files in public/, no
+ * <link>. The design only "worked" on a machine that happened to already
+ * have Inter installed locally (CLAUDE.md UI/UX audit finding #04) — every
+ * other visitor silently fell back to their OS default. Self-hosted rather
+ * than a Google Fonts <link> because the production CSP is
+ * `default-src 'self'`, which would block a cross-origin font stylesheet
+ * outright. Only the two weights actually used in this app (400, 500 —
+ * see the font-medium/font-normal usage throughout) are pulled in, not the
+ * full family, to keep this from becoming its own multi-hundred-KB asset.
+ */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+/*
  * AIR OS design tokens.
  *
  * The brief for this UI: futuristic, premium, technical, minimal, cinematic.

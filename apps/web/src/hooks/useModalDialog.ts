@@ -59,13 +59,17 @@ export function useModalDialog<T extends HTMLElement>({
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const raf = requestAnimationFrame(() => {
-      const target = initialFocusRef?.current ?? dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-      target?.focus();
-    });
+    // Focused synchronously in the effect, not deferred to a
+    // requestAnimationFrame callback. The deferral had no real layout
+    // reason — the dialog's already in the DOM by the time this effect
+    // runs — and it meant focus depended on rAF actually firing at all: if
+    // a dialog opens while the tab is backgrounded or otherwise not
+    // compositing frames, rAF never runs, so focus never enters and the
+    // trap below has nothing to trap (CLAUDE.md UI/UX audit finding #29).
+    const target = initialFocusRef?.current ?? dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    target?.focus();
 
     return () => {
-      cancelAnimationFrame(raf);
       document.body.style.overflow = originalOverflow;
       (elementToRestore ?? previouslyFocused.current)?.focus();
       previouslyFocused.current = null;

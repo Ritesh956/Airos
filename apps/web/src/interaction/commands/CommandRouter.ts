@@ -73,17 +73,34 @@ class CommandRouterImpl {
   };
 
   /** Dispatch by matching free text against registered phrases — the path
-   *  voice and the text palette use. Case-insensitive substring match. */
+   *  voice and the text palette use. Case-insensitive substring match,
+   *  scored by the longest matching phrase rather than the first one found
+   *  in registration order. A plain "first match wins" scan meant
+   *  registration order silently decided ties — navigation commands are
+   *  registered before module commands, so "open game" (no exact phrase;
+   *  the registered one is "open game mode") never matched anything, while
+   *  a case like a hypothetical "open" earlier in the list could shadow a
+   *  more specific later phrase. Picking the longest match is a cheap,
+   *  deterministic tiebreaker: a more specific (longer) phrase is a better
+   *  interpretation of what was actually said than a shorter, more generic
+   *  one that happens to also be a substring (CLAUDE.md UI/UX audit
+   *  finding #17). */
   dispatchPhrase = (text: string): Command | null => {
     const normalized = text.trim().toLowerCase();
     if (!normalized) return null;
+
+    let best: { command: Command; length: number } | null = null;
     for (const command of this.commands.values()) {
-      if (command.phrases.some((p) => normalized.includes(p))) {
-        command.run();
-        return command;
+      for (const phrase of command.phrases) {
+        if (normalized.includes(phrase) && (!best || phrase.length > best.length)) {
+          best = { command, length: phrase.length };
+        }
       }
     }
-    return null;
+
+    if (!best) return null;
+    best.command.run();
+    return best.command;
   };
 
   subscribe = (listener: () => void): Unregister => {

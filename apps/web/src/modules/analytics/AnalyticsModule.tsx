@@ -58,7 +58,7 @@ function DegradationLadderPanel() {
   };
 
   return (
-    <Panel eyebrow="IMPLEMENTATION.md §9" title="Degradation Ladder">
+    <Panel eyebrow="Performance" title="Degradation Ladder">
       <p className="mb-3 text-xs text-ink-2">
         Triggers when the rolling 3-second median FPS stays under 20. Each step reverses once FPS
         recovers above 25 for another 3 seconds.

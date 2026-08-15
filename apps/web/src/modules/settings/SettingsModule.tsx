@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useStoreSelector } from '@/hooks/useStore';
-import { appStore, updateSettings } from '@/state/appStore';
+import { appStore, clearLastVoiceResult, updateSettings } from '@/state/appStore';
 import { Panel } from '@/ui/Panel';
 import { Toggle } from '@/ui/Toggle';
 import { StatusPill } from '@/ui/StatusPill';
@@ -11,12 +11,15 @@ import { useCamera } from '@/hooks/useCamera';
 import { checkBrowserSupport } from '@/utils/browserSupport';
 import { VOICE_ERROR_MESSAGES } from '@/interaction/voice/errors';
 import { BUILD_STATUS_SUMMARY } from '@/app/buildStatus';
+import { clearAllDrawings } from '@/modules/draw/drawGallery';
 
 const VOICE_STATUS_LABEL: Record<'off' | 'listening' | 'error', string> = {
   off: 'Off',
   listening: 'Listening',
   error: 'Error',
 };
+
+const REPO_URL = 'https://github.com/Ritesh956/Airos';
 
 export default function SettingsModule() {
   const settings = useStoreSelector(appStore, (s) => s.settings);
@@ -26,6 +29,24 @@ export default function SettingsModule() {
   const lastVoiceCommandTitle = useStoreSelector(appStore, (s) => s.lastVoiceCommandTitle);
   const voiceSupported = useMemo(() => checkBrowserSupport().speechRecognition, []);
   const { state, start, stop } = useCamera();
+  const [clearing, setClearing] = useState(false);
+
+  const handleClearLocalData = async () => {
+    setClearing(true);
+    try {
+      window.localStorage.removeItem('airos.settings.v1');
+      window.localStorage.removeItem('airos.game.highScore.v1');
+      await clearAllDrawings();
+      // A full reload rather than resetting each store field in place —
+      // simplest way to guarantee every in-memory value (settings, high
+      // score, the gallery list) actually reflects what was just cleared,
+      // rather than this component trying to individually reset every
+      // store that reads from localStorage/IndexedDB on init.
+      window.location.reload();
+    } catch {
+      setClearing(false);
+    }
+  };
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
@@ -41,10 +62,28 @@ export default function SettingsModule() {
       <Panel eyebrow="Privacy" title="Camera data handling">
         <p className="text-sm leading-relaxed text-ink-2">
           Camera processing happens locally in your browser. Video frames are never uploaded,
-          recorded, or transmitted to any server. The backend used by AIR OS never receives an
-          image or a camera frame — only, in future multiplayer scenarios, small classified
-          gesture events (a name and a confidence number).
+          recorded, or transmitted to any server — AIR OS's backend never receives an image or a
+          camera frame.
         </p>
+        <p className="mt-3 text-sm leading-relaxed text-ink-2">
+          Voice control is different: turning it on hands audio to your browser's built-in speech
+          recognition, which in Chrome and Edge sends it to that browser vendor's servers to be
+          transcribed. That's outside AIR OS's control — the camera pipeline above is the only
+          part of this app that's guaranteed to stay fully on-device.
+        </p>
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="text-xs font-medium uppercase tracking-[0.1em] text-ink-3">
+            Stored on this device
+          </p>
+          <ul className="mt-2 list-inside list-disc text-sm text-ink-2">
+            <li>Your settings on this page (local storage)</li>
+            <li>Game Mode's high score (local storage)</li>
+            <li>Any drawings you've saved to Air Draw's gallery (in-browser database)</li>
+          </ul>
+          <Button variant="secondary" size="sm" className="mt-3" onClick={() => void handleClearLocalData()} disabled={clearing}>
+            {clearing ? 'Clearing…' : 'Clear all local data'}
+          </Button>
+        </div>
       </Panel>
 
       <Panel eyebrow="Tracking Source" title="Camera" action={<StatusPill state={state} />}>
@@ -68,7 +107,7 @@ export default function SettingsModule() {
       <Panel eyebrow="Gesture Recognition" title="Stability window">
         <Slider
           label="Frames to confirm a gesture"
-          description="How many consecutive frames a pose must hold before it's reported — higher resists flicker near a decision boundary but adds lag; lower reacts faster but can misfire. Applies to every module (Cursor, Draw, Studio, Game, Presentation), not just one — see IMPLEMENTATION.md §7."
+          description="How many consecutive frames a pose must hold before it's reported — higher resists flicker near a decision boundary but adds lag; lower reacts faster but can misfire. Applies to every module (Cursor, Draw, Studio, Game, Presentation), not just one."
           value={settings.gestureStabilityFrames}
           min={1}
           max={8}
@@ -96,7 +135,7 @@ export default function SettingsModule() {
               checked={settings.voiceEnabled}
               onChange={(voiceEnabled) => updateSettings({ voiceEnabled })}
               label="Voice control"
-              description="Say a command's name — 'open 3d studio', 'start camera' — to trigger it through the same Command Router keyboard and gestures use. Requires microphone access."
+              description="Say a command's name — 'open 3d studio', 'start camera' — to trigger it through the same Command Router keyboard and gestures use. Requires microphone access, and processes audio through your browser's speech recognition service rather than staying fully on-device — see the privacy note above."
             />
             {settings.voiceEnabled && (
               <div className="mt-3 border-t border-border pt-3">
@@ -110,6 +149,11 @@ export default function SettingsModule() {
                   value={lastVoiceCommandTitle ?? (lastVoiceTranscript ? 'No match' : '—')}
                   method="HEURISTIC"
                 />
+                {lastVoiceTranscript && (
+                  <Button variant="ghost" size="sm" className="mt-2" onClick={clearLastVoiceResult}>
+                    Clear transcript
+                  </Button>
+                )}
               </div>
             )}
           </>
@@ -123,14 +167,25 @@ export default function SettingsModule() {
           label="Reduce motion"
           description="Disables page-transition and ambient animation throughout the shell."
         />
+        <p className="mt-3 border-t border-border pt-3 text-xs text-ink-3">
+          AIR OS is dark-themed only for now — there's no light or high-contrast mode yet.
+        </p>
       </Panel>
 
       <Panel eyebrow="About" title="Build">
         <div className="space-y-1 text-sm text-ink-2">
           <p>AIR OS — {BUILD_STATUS_SUMMARY}</p>
           <p className="text-ink-3">
-            See IMPLEMENTATION.md in the project root for the full phase plan and architectural
-            decisions.
+            Source and full architecture notes are on{' '}
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="text-signal-400 underline underline-offset-2 hover:text-signal-500"
+            >
+              GitHub
+            </a>
+            .
           </p>
         </div>
       </Panel>

@@ -1,5 +1,6 @@
 import type { Method } from '@/vision/types';
 import { cn } from '@/utils/cn';
+import { methodDescriptionId } from './methodDescriptions';
 
 /**
  * Renders the provenance of a value. This is the enforcement mechanism for
@@ -30,8 +31,13 @@ const DESCRIPTION: Record<Method, string> = {
  *  finding #10), which matters here specifically because the provenance
  *  taxonomy this badge exists to enforce (IMPLEMENTATION.md §1.4) is a
  *  stated project value, not decoration. `title` stays as a bonus for
- *  mouse users; the `sr-only` span is what actually makes the description
- *  reachable without one. */
+ *  mouse users; `aria-describedby` is what makes the description reachable
+ *  without one — pointed at one of the three fixed `MethodDefinitions`
+ *  elements `AppShell` mounts once, rather than embedding a copy of the
+ *  sentence in every badge (a page with eight readouts used to put "—
+ *  Arithmetic derived from model or heuristic values." in the DOM eight
+ *  times; now it's in the DOM three times total, app-wide — see
+ *  CLAUDE.md's audit finding #10). */
 export function MethodBadge({ method, className }: { method: Method; className?: string }) {
   return (
     <span
@@ -41,9 +47,9 @@ export function MethodBadge({ method, className }: { method: Method; className?:
         className,
       )}
       title={DESCRIPTION[method]}
+      aria-describedby={methodDescriptionId(method)}
     >
       {LABEL[method]}
-      <span className="sr-only"> — {DESCRIPTION[method]}</span>
     </span>
   );
 }

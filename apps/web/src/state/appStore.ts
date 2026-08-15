@@ -166,10 +166,26 @@ export function setLastVoiceResult(transcript: string, matchedCommandTitle: stri
   appStore.update({ lastVoiceTranscript: transcript, lastVoiceCommandTitle: matchedCommandTitle });
 }
 
+/** Settings' "Clear transcript" control — the last thing voice control
+ *  heard used to have no way to clear once shown (CLAUDE.md UI/UX audit
+ *  finding #06), which matters here specifically because it's raw
+ *  speech-to-text of whatever was said, not just matched commands. */
+export function clearLastVoiceResult(): void {
+  appStore.update({ lastVoiceTranscript: null, lastVoiceCommandTitle: null });
+}
+
 export function updateSettings(patch: Partial<AppSettings>): void {
   const next = { ...appStore.get().settings, ...patch };
   appStore.update({ settings: next });
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    try {
+      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    } catch {
+      // Safari private browsing throws on any localStorage write, and a
+      // full storage quota can throw here too — either way, the setting
+      // still applies for this session via the store update above; only
+      // persisting it across a reload silently fails (CLAUDE.md UI/UX
+      // audit finding #20).
+    }
   }
 }

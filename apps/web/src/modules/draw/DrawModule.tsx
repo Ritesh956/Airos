@@ -198,10 +198,20 @@ export default function DrawModule() {
 
           <Panel eyebrow="Save" title="Export & Gallery">
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" size="sm" onClick={handleExportPng} disabled={busy !== null}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleExportPng}
+                disabled={busy !== null || draw.strokeCount === 0}
+              >
                 {busy === 'export' ? 'Exporting…' : 'Export as PNG'}
               </Button>
-              <Button variant="secondary" size="sm" onClick={handleSaveToGallery} disabled={busy !== null}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSaveToGallery}
+                disabled={busy !== null || draw.strokeCount === 0}
+              >
                 {busy === 'save' ? 'Saving…' : 'Save to Gallery'}
               </Button>
             </div>

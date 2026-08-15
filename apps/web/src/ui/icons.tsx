@@ -14,6 +14,12 @@ const base = {
   strokeWidth: 1.6,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
+  // Every one of these sits beside a text label that already carries the
+  // meaning (a button's own text, a nav link's own label) — decorative by
+  // construction, so excluded from the accessibility tree outright rather
+  // than left for a screen reader to announce as an unlabeled graphic.
+  'aria-hidden': 'true' as const,
+  focusable: 'false' as const,
 };
 
 export function HomeIcon(props: IconProps) {

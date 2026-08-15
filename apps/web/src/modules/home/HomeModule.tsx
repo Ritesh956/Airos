@@ -1,5 +1,5 @@
 import { MODULE_REGISTRY } from '@/app/moduleRegistry';
-import { MODULE_COUNT, TOTAL_PHASES } from '@/app/buildStatus';
+import { MODULE_COUNT } from '@/app/buildStatus';
 import { ModuleCard } from '@/ui/ModuleCard';
 import { CameraControlPanel } from './CameraControlPanel';
 import { BrowserSupportPanel } from './BrowserSupportPanel';
@@ -12,7 +12,7 @@ export default function HomeModule() {
       <section className="pt-6 text-center">
         <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-[11px] text-ink-2">
           <span className="h-1.5 w-1.5 rounded-full bg-signal-400 animate-pulse-slow" />
-          {TOTAL_PHASES} phases complete · {MODULE_COUNT} modules · runs entirely in your browser
+          {MODULE_COUNT} modules · hand, face &amp; pose tracking · runs entirely in your browser
         </div>
         <h1 className="mt-4 text-4xl font-medium tracking-tight text-ink-0 sm:text-5xl">
           AIR&nbsp;OS

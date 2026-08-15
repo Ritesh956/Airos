@@ -102,7 +102,14 @@ export default function StudioModule() {
 
         <Panel eyebrow="Scene" title="Viewport" padded={false} className="overflow-hidden">
           <div style={{ height: 560 }}>
-            <Canvas camera={{ position: [0, 2.2, 6], fov: 45 }} dpr={[1, 2]}>
+            <Canvas
+              camera={{ position: [0, 2.2, 6], fov: 45 }}
+              dpr={[1, 2]}
+              role="img"
+              aria-label={`3D scene with a cube, sphere, torus, and glowing centerpiece. ${
+                selectedSpec ? `${selectedSpec.label} is selected.` : 'Nothing is selected.'
+              } Click an object to select it, or use the keyboard controls listed on the left.`}
+            >
               <StudioScene />
             </Canvas>
           </div>

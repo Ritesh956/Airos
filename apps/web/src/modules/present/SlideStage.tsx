@@ -15,6 +15,7 @@ import {
 } from './presentStore';
 import { SLIDES } from './slides';
 import { Button } from '@/ui/Button';
+import { LiveRegion } from '@/ui/LiveRegion';
 import { formatDuration } from '@/utils/format';
 import { cn } from '@/utils/cn';
 
@@ -58,6 +59,11 @@ export function SlideStage() {
 
   return (
     <div className="relative flex h-full flex-col">
+      {/* Arrows, dots, Prev/Next, and swipes all replace the slide in
+          place with no other signal that anything happened — a screen
+          reader user got no indication the deck had advanced at all
+          (CLAUDE.md UI/UX audit finding #11). */}
+      <LiveRegion message={`Slide ${present.slideIndex + 1} of ${SLIDES.length}: ${slide.title}`} />
       <div className="flex flex-1 flex-col items-center justify-center gap-6 p-10 text-center">
         <h2 className="text-3xl font-medium text-ink-0">{slide.title}</h2>
         <ul className="flex flex-col gap-3">
@@ -70,7 +76,7 @@ export function SlideStage() {
       </div>
 
       {present.showNotes && (
-        <div className="border-t border-border bg-surface-1 px-6 py-3 text-xs text-ink-3">
+        <div id="speaker-notes" className="border-t border-border bg-surface-1 px-6 py-3 text-xs text-ink-3">
           <span className="font-medium text-ink-2">Speaker notes: </span>
           {slide.notes}
         </div>
@@ -122,10 +128,23 @@ export function SlideStage() {
           <Button variant="ghost" size="sm" onClick={resetTimer}>
             Reset
           </Button>
-          <Button variant="ghost" size="sm" onClick={toggleNotes}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleNotes}
+            aria-expanded={present.showNotes}
+            aria-controls="speaker-notes"
+          >
             {present.showNotes ? 'Hide Notes' : 'Notes'}
           </Button>
-          <Button ref={legendTriggerRef} variant="ghost" size="sm" onClick={toggleLegend}>
+          <Button
+            ref={legendTriggerRef}
+            variant="ghost"
+            size="sm"
+            onClick={toggleLegend}
+            aria-expanded={present.showLegend}
+            aria-controls="gesture-legend-panel"
+          >
             Legend
           </Button>
         </div>
@@ -134,6 +153,7 @@ export function SlideStage() {
       {present.showLegend && (
         <div className="absolute inset-0 flex items-center justify-center bg-surface-0/80 backdrop-blur-sm">
           <div
+            id="gesture-legend-panel"
             ref={legendDialogRef}
             role="dialog"
             aria-modal="true"

@@ -21,6 +21,22 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    // Vite inlines any asset under 4KB as a base64 data: URI directly into
+    // the referencing CSS by default — several of the self-hosted font
+    // subsets (@fontsource/inter, @fontsource/jetbrains-mono ship one
+    // @font-face per Unicode range, and the small ranges like Greek or
+    // Vietnamese land under that threshold) were getting inlined this way.
+    // That silently broke them: this app's CSP has no `font-src`
+    // directive, so it falls back to `default-src 'self'` — which allows
+    // same-origin file requests but not `data:` URIs — so every inlined
+    // subset failed to load with a CSP violation in the console, found by
+    // actually auditing the production build's console rather than
+    // assuming a clean typecheck/build meant the fonts worked (the same
+    // "npm run build passing isn't the same claim as it working"
+    // discipline as CLAUDE.md's bug #14/#15). Forcing font files to always
+    // emit as real hashed same-origin files sidesteps this rather than
+    // widening the CSP to allow `data:` fonts app-wide.
+    assetsInlineLimit: (filePath) => (/\.(woff2?|ttf|otf)$/i.test(filePath) ? false : undefined),
     rollupOptions: {
       output: {
         // Three.js + React Three Fiber + Drei are only ever pulled in by

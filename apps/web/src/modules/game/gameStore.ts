@@ -1,5 +1,5 @@
 import { createStore } from '@/state/createStore';
-import type { GameStatus } from './gameSimulation';
+import { LIVES_START, type GameStatus } from './gameSimulation';
 
 /**
  * Game Mode's cold-path summary — the small set of fields the HUD
@@ -34,7 +34,12 @@ function loadHighScore(): number {
 export const gameStore = createStore<GameState>({
   status: 'idle',
   score: 0,
-  lives: 0,
+  // LIVES_START, not 0 — the round hasn't started, but showing "Lives 0"
+  // before the first play reads as game-over on arrival, not "ready"
+  // (CLAUDE.md UI/UX audit finding #07). gameSimulation.ts's own initial
+  // state already starts a fresh round at LIVES_START; this just stops the
+  // HUD from contradicting that for the brief window before play begins.
+  lives: LIVES_START,
   highScore: loadHighScore(),
   shieldActive: false,
 });
@@ -46,7 +51,15 @@ export function syncGameSummary(patch: Pick<GameState, 'status' | 'score' | 'liv
   const current = gameStore.get();
   const highScore = Math.max(current.highScore, patch.score);
   if (highScore > current.highScore && typeof window !== 'undefined') {
-    window.localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+    // Persistence failing (Safari private browsing, a full quota) is not a
+    // reason the round itself should throw mid-`advance()` — the new high
+    // score still applies in memory via the store update below either way
+    // (CLAUDE.md UI/UX audit finding #20).
+    try {
+      window.localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+    } catch {
+      // Best-effort; see comment above.
+    }
   }
   gameStore.update({ ...patch, highScore });
 }

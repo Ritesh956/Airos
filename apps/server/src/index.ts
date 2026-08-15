@@ -13,6 +13,10 @@ const app = express();
 const PORT = Number(process.env.PORT ?? 8787);
 const startedAt = Date.now();
 
+// Omits the framework fingerprint from every response — a low-cost
+// hardening step, not a meaningful secret (CLAUDE.md UI/UX audit finding #22).
+app.disable('x-powered-by');
+
 // gzip/brotli the client bundle, the MediaPipe WASM runtime, and the .task
 // model files — without this every one of those (multi-megabyte) responses
 // goes over the wire uncompressed. Lighthouse's "Enable text compression"
@@ -46,12 +50,30 @@ app.use((_req, res, next) => {
   res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Tells the browser (and anything reading this response) that AIR OS
+  // only ever wants camera/microphone for itself, and never wants
+  // geolocation at all — makes the app's own actual permission usage
+  // explicit rather than implicit (CLAUDE.md UI/UX audit finding #22).
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+  // Browsers ignore this header entirely over a plain HTTP connection, so
+  // sending it unconditionally is safe even in local/HTTP dev — it only
+  // takes effect once this response is actually served over HTTPS (CLAUDE.md
+  // UI/UX audit finding #22).
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
       "script-src 'self' 'wasm-unsafe-eval'",
       "style-src 'self'",
+      // React/Three.js only ever write inline styles through the CSSOM
+      // (`el.style.x = ...`), which CSP doesn't govern — but a bare
+      // `style-src 'self'` also silently blocks `setAttribute('style', …)`
+      // with no error, which would be a real trap for the next dependency
+      // or snippet that sets one that way. `style-src-attr` is narrower
+      // than opening up `style-src` itself (CLAUDE.md UI/UX audit finding
+      // #21).
+      "style-src-attr 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "media-src 'self' blob:",
       "connect-src 'self'",
@@ -101,7 +123,25 @@ app.get('/api/health', (_req, res) => {
   res.json(body);
 });
 
-app.use(express.static(clientDist));
+// `index.html` itself must stay revalidate-on-every-load (it names the
+// current content-hashed bundle, so caching it would pin visitors to a
+// stale build) — everything else served from dist/, including the
+// content-hashed JS/CSS bundles and the three MediaPipe model files, is
+// either hashed or effectively version-locked by filename, so a year-long
+// immutable cache is safe. Previously every static response — including
+// the ~7.8MB hand-tracking model — carried `express.static`'s default
+// `max-age=0`, forcing a full revalidation request on every single visit
+// for assets that never actually change (CLAUDE.md UI/UX audit finding #08).
+app.use(
+  express.static(clientDist, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (!filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }),
+);
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) return next();
   res.sendFile(path.join(clientDist, 'index.html'), (err) => {

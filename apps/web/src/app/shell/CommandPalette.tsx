@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { commandRouter } from '@/interaction/commands/CommandRouter';
 import { useStoreSelector } from '@/hooks/useStore';
 import { useModalDialog } from '@/hooks/useModalDialog';
@@ -29,11 +29,16 @@ export function CommandPalette() {
   const [highlighted, setHighlighted] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const filtered = commands.filter((c) => {
+  // Memoized: this used to be a plain `const` recomputed with a fresh array
+  // identity on every render, and it's a dependency of both effects below —
+  // so both tore down and re-registered their listeners on every render
+  // while the palette was open, not just when the query or the command
+  // list actually changed (CLAUDE.md UI/UX audit finding #28).
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return c.title.toLowerCase().includes(q) || c.phrases.some((p) => p.includes(q));
-  });
+    if (!q) return commands;
+    return commands.filter((c) => c.title.toLowerCase().includes(q) || c.phrases.some((p) => p.includes(q)));
+  }, [commands, query]);
 
   const close = () => toggleCommandPalette(false);
   const dialogRef = useModalDialog<HTMLDivElement>({ open, onClose: close, initialFocusRef: inputRef });
@@ -103,7 +108,13 @@ export function CommandPalette() {
           }}
           placeholder="Type a command…"
           role="combobox"
-          aria-expanded={filtered.length > 0}
+          // Hard-coded true, not `filtered.length > 0` — this describes
+          // whether the popup listbox is displayed, not whether it
+          // currently has results. The listbox always renders (it shows
+          // "No matching commands." when empty), so a query with zero
+          // matches used to flip this to false while the listbox was still
+          // on screen (CLAUDE.md UI/UX audit finding #33).
+          aria-expanded="true"
           aria-controls={LISTBOX_ID}
           aria-autocomplete="list"
           aria-activedescendant={activeOption ? optionId(activeOption.id) : undefined}
@@ -120,6 +131,7 @@ export function CommandPalette() {
               role="option"
               tabIndex={-1}
               aria-selected={i === highlighted}
+              aria-label={command.keys ? `${command.title}, shortcut ${command.keys[0]}` : command.title}
               onClick={() => {
                 command.run();
                 close();
@@ -132,7 +144,17 @@ export function CommandPalette() {
             >
               <span>{command.title}</span>
               {command.keys && (
-                <kbd className="rounded border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-3">
+                // aria-hidden: an option's accessible name is computed from
+                // its whole subtree, so without this the shortcut key ran
+                // straight into the title with no separator — "Open Home"
+                // announced as "Open Home1" (CLAUDE.md UI/UX audit finding
+                // #25). The shortcut is a visual hint for sighted/mouse
+                // users; aria-label below carries the same information in
+                // a screen-reader-appropriate form.
+                <kbd
+                  aria-hidden="true"
+                  className="rounded border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-3"
+                >
                   {command.keys[0]}
                 </kbd>
               )}

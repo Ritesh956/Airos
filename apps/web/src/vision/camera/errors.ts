@@ -14,7 +14,7 @@ export const CAMERA_ERROR_MESSAGES: Record<CameraErrorReason, string> = {
   unsupported:
     'This browser is missing a feature AIR OS needs (WebGL2 or WebAssembly). Try a recent version of Chrome or Edge.',
   'model-load-failed':
-    'The tracking model failed to download. Check your connection and retry — AIR OS loads models locally and does not work fully offline yet.',
+    'The tracking model failed to download. It\'s fetched from this site the first time you use it, so check your connection and retry.',
   unknown: 'Something went wrong starting the camera. Try again, or switch to Demo Mode.',
 };
 

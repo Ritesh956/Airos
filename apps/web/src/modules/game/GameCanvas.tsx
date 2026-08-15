@@ -12,28 +12,6 @@ const STAR_COLOR = 'rgba(244, 246, 251, 0.5)';
 
 const KEYBOARD_MOVE_SPEED = 0.9; // normalized units/sec while an arrow key is held
 
-// Same guard useGlobalKeyboardCommands.ts uses — without it, typing a space
-// or an arrow key into the Command Palette's search box (or any other
-// input on the page) would also fire/steer the ship out from under the
-// user. Extended past that original set (CLAUDE.md UI/UX audit finding
-// #3): the game keys were previously captured on `window` unconditionally,
-// so Space/ArrowLeft/ArrowRight stopped working on every button, link, and
-// switch on the whole page while this module was mounted — including the
-// module's own Start/Pause/Restart buttons and the Demo Mode toggle.
-// Interactive roles are included for the same reason as the tag list: a
-// `role="switch"` button (ui/Toggle.tsx) doesn't match any tag here but is
-// just as much "the user is operating a control, not steering."
-const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
-const INTERACTIVE_TAGS = new Set(['BUTTON', 'A']);
-const INTERACTIVE_ROLES = new Set(['switch', 'option', 'tab', 'menuitem', 'checkbox', 'radio']);
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (EDITABLE_TAGS.has(target.tagName) || target.isContentEditable) return true;
-  if (INTERACTIVE_TAGS.has(target.tagName)) return true;
-  const role = target.getAttribute('role');
-  return role !== null && INTERACTIVE_ROLES.has(role);
-}
-
 /** A handful of fixed pseudo-random star positions, generated once — a
  *  static backdrop, not an animated particle system, per the "interaction
  *  quality is the point, not the game design" brief this module's own
@@ -96,6 +74,19 @@ function drawShip(ctx: CanvasRenderingContext2D, x: number, width: number, heigh
  * Full mouse/keyboard parity, same "camera-less full capability" bar
  * every pointer-driven module holds itself to: the mouse steers and
  * clicks to fire, arrow keys steer, Shift holds the shield.
+ *
+ * Keyboard listeners are scoped to the canvas itself (`tabIndex={0}` +
+ * element-level listeners), not `window` — matching `DrawCanvas.tsx`'s
+ * established pattern. This used to be window-scoped with an
+ * `isEditableTarget` guard bolted on to stop it from hijacking keys typed
+ * into other controls, but the guard only covered known interactive tags —
+ * and more importantly, capturing Space at `window` scope consumed the
+ * browser's own Space-to-scroll on every part of the page, any time
+ * nothing editable happened to have focus (CLAUDE.md UI/UX audit finding
+ * #16). Scoping to a focusable canvas removes the need for the guard
+ * entirely — these listeners simply never fire unless the canvas itself is
+ * focused — and gives Game Mode a real keyboard entry point it didn't
+ * clearly have before.
  */
 export function GameCanvas({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -181,7 +172,6 @@ export function GameCanvas({ className }: { className?: string }) {
     };
     const onClick = () => gameApi.fire();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isEditableTarget(event.target)) return;
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         // Without this, the same arrow press both steers the ship and
         // scrolls the page — the canvas sits above three panels, so
@@ -196,42 +186,36 @@ export function GameCanvas({ className }: { className?: string }) {
         gameApi.fire();
       }
     };
-    // Deliberately NOT guarded by isEditableTarget, unlike onKeyDown: a key
-    // can be pressed down while the canvas has focus (recorded into
-    // keysHeld/shiftHeld) and then released after focus has already moved
-    // onto a button or input — filtering the *release* by current target
-    // would leave that key stuck "held" forever, steering the ship or
-    // holding the shield up indefinitely. The guard belongs on keydown
-    // only, where it correctly stops a new key from being recorded while
-    // typing into a control.
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') keysHeld.delete(event.key);
       if (event.key === 'Shift') shiftHeld = false;
     };
 
-    // A held key's keyup event never fires at all if focus leaves the page
-    // entirely (alt-tab, switching windows/tabs) — release-tracking alone
-    // can't catch that. Without this, steering left/right or the shield
-    // could get stuck on indefinitely after the window regains focus.
-    const onBlur = () => {
+    // A held key's keyup never fires if focus leaves the canvas before the
+    // key is released — Tab to another control mid-press, or the whole
+    // window loses focus (alt-tab), both of which fire `blur` on the
+    // focused element. Without this, steering left/right or the shield
+    // could get stuck on indefinitely. Same pattern DrawCanvas.tsx's
+    // onCanvasBlur uses.
+    const onCanvasBlur = () => {
       keysHeld.clear();
       shiftHeld = false;
     };
 
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('click', onClick);
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
+    canvas.addEventListener('keydown', onKeyDown);
+    canvas.addEventListener('keyup', onKeyUp);
+    canvas.addEventListener('blur', onCanvasBlur);
 
     return () => {
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('click', onClick);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
+      canvas.removeEventListener('keydown', onKeyDown);
+      canvas.removeEventListener('keyup', onKeyUp);
+      canvas.removeEventListener('blur', onCanvasBlur);
     };
   }, []);
 
@@ -239,8 +223,13 @@ export function GameCanvas({ className }: { className?: string }) {
     <canvas
       ref={canvasRef}
       role="img"
-      aria-label="Game arena. Move the mouse, or point in the air over the camera, to steer; click or pinch to fire."
-      className={cn('h-full w-full cursor-crosshair touch-none bg-[#05070d]', className)}
+      tabIndex={0}
+      aria-label="Game arena. Move the mouse, or point in the air over the camera, to steer; click or pinch to fire. Focus this canvas and use the arrow keys to steer, Space to fire, and Shift to shield."
+      className={cn(
+        'h-full w-full cursor-crosshair touch-none bg-[#05070d] outline-none',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-signal-400',
+        className,
+      )}
     />
   );
 }

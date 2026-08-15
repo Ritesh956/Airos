@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { commandRouter } from '@/interaction/commands/CommandRouter';
 import { interactionStore, setSelectedObjectId } from '@/state/interactionStore';
+import { useStoreSelector } from '@/hooks/useStore';
 import { STUDIO_OBJECTS } from './studioObjects';
 import { nudgeStudioPosition, nudgeStudioRotationY, nudgeStudioScale } from './studioTransforms';
 
@@ -36,8 +37,21 @@ function withSelected(fn: (id: string) => void): () => void {
  * a keyboard nudge eases in smoothly too, and translate is deliberately
  * XY-only (arrows), matching the gesture path's own fixed-depth drag
  * plane — same degrees of freedom either way.
+ *
+ * The four arrow-key move commands are registered only while something is
+ * selected, not unconditionally on mount like every other command here.
+ * `useGlobalKeyboardCommands` calls `preventDefault()` on any matched key
+ * before running it, regardless of what `run()` actually does — so with
+ * these registered up front, arrow keys blocked the page's own scroll on
+ * this route even in the (initial, and common) state where nothing is
+ * selected and the commands were themselves a no-op via `withSelected`
+ * (CLAUDE.md UI/UX audit finding #15). Once an object *is* selected, the
+ * arrows genuinely have a job — nudging it — so claiming them then is the
+ * same intentional trade-off a 3D editor's arrow-key nudge always makes.
  */
 export function useStudioKeyboardCommands(): void {
+  const hasSelection = useStoreSelector(interactionStore, (s) => s.selectedObjectId !== null);
+
   useEffect(() => {
     const unregisters = [
       commandRouter.register({
@@ -63,38 +77,6 @@ export function useStudioKeyboardCommands(): void {
         keys: ['Escape'],
         category: '3D Studio',
         run: () => setSelectedObjectId(null),
-      }),
-      commandRouter.register({
-        id: 'studio.move-left',
-        title: 'Move Selected Object Left',
-        phrases: ['move left'],
-        keys: ['ArrowLeft'],
-        category: '3D Studio',
-        run: withSelected((id) => nudgeStudioPosition(id, -POSITION_STEP, 0)),
-      }),
-      commandRouter.register({
-        id: 'studio.move-right',
-        title: 'Move Selected Object Right',
-        phrases: ['move right'],
-        keys: ['ArrowRight'],
-        category: '3D Studio',
-        run: withSelected((id) => nudgeStudioPosition(id, POSITION_STEP, 0)),
-      }),
-      commandRouter.register({
-        id: 'studio.move-up',
-        title: 'Move Selected Object Up',
-        phrases: ['move up'],
-        keys: ['ArrowUp'],
-        category: '3D Studio',
-        run: withSelected((id) => nudgeStudioPosition(id, 0, POSITION_STEP)),
-      }),
-      commandRouter.register({
-        id: 'studio.move-down',
-        title: 'Move Selected Object Down',
-        phrases: ['move down'],
-        keys: ['ArrowDown'],
-        category: '3D Studio',
-        run: withSelected((id) => nudgeStudioPosition(id, 0, -POSITION_STEP)),
       }),
       commandRouter.register({
         id: 'studio.scale-up',
@@ -132,4 +114,45 @@ export function useStudioKeyboardCommands(): void {
 
     return () => unregisters.forEach((fn) => fn());
   }, []);
+
+  useEffect(() => {
+    if (!hasSelection) return;
+
+    const unregisters = [
+      commandRouter.register({
+        id: 'studio.move-left',
+        title: 'Move Selected Object Left',
+        phrases: ['move left'],
+        keys: ['ArrowLeft'],
+        category: '3D Studio',
+        run: withSelected((id) => nudgeStudioPosition(id, -POSITION_STEP, 0)),
+      }),
+      commandRouter.register({
+        id: 'studio.move-right',
+        title: 'Move Selected Object Right',
+        phrases: ['move right'],
+        keys: ['ArrowRight'],
+        category: '3D Studio',
+        run: withSelected((id) => nudgeStudioPosition(id, POSITION_STEP, 0)),
+      }),
+      commandRouter.register({
+        id: 'studio.move-up',
+        title: 'Move Selected Object Up',
+        phrases: ['move up'],
+        keys: ['ArrowUp'],
+        category: '3D Studio',
+        run: withSelected((id) => nudgeStudioPosition(id, 0, POSITION_STEP)),
+      }),
+      commandRouter.register({
+        id: 'studio.move-down',
+        title: 'Move Selected Object Down',
+        phrases: ['move down'],
+        keys: ['ArrowDown'],
+        category: '3D Studio',
+        run: withSelected((id) => nudgeStudioPosition(id, 0, -POSITION_STEP)),
+      }),
+    ];
+
+    return () => unregisters.forEach((fn) => fn());
+  }, [hasSelection]);
 }

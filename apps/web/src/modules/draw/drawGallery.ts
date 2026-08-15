@@ -92,3 +92,21 @@ export async function deleteDrawing(id: number): Promise<void> {
     db.close();
   }
 }
+
+/** Empties the whole gallery in one transaction — the counterpart Settings'
+ *  "Clear all local data" needs (CLAUDE.md UI/UX audit finding #19): the
+ *  gallery previously only had per-item delete, with no single control to
+ *  clear everything this app has ever stored on the visitor's device. */
+export async function clearAllDrawings(): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('Failed to clear the gallery.'));
+    });
+  } finally {
+    db.close();
+  }
+}

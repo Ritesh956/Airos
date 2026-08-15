@@ -82,6 +82,18 @@ go that route, make sure whatever host serves `apps/web/dist/` gzip/brotli
 compresses responses itself, since `@airos/server`'s `compression()`
 middleware (see below) won't be in the request path.
 
+**This is the route the repo's own `vercel.json` takes.** It builds only
+`@airos/shared` and `@airos/web`, publishes `apps/web/dist/` as static
+output, and never deploys `@airos/server` at all — a deliberate choice,
+not an oversight, since the app is fully functional without it. Concretely,
+that means on Vercel: `/api/health` returns Vercel's own 404 rather than
+the real health/model-manifest response, and the WebSocket relay doesn't
+exist there. Vercel's own edge network already compresses responses, so
+`vercel.json` doesn't need its own equivalent of `compression()`. If a
+future deployment does need the health endpoint or WS relay, use the
+single-process Node deployment above instead (or as well, on a different
+host) rather than trying to add serverless functions to this static setup.
+
 `@airos/server` gzip/brotli-compresses every response (`compression()` in
 `apps/server/src/index.ts`) — this matters more than it sounds like for
 this app specifically, since the MediaPipe WASM runtime and model files

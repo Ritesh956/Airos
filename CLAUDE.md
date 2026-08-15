@@ -1189,6 +1189,155 @@ structurally identical to the already-verified gesture/mouse drawing
 paths (same `strokesApi` calls, same tool-cursor render). Flagged
 plainly rather than claimed.
 
+## Post-Phase-14, continued: a second full audit and 34 fixes
+
+A later session ran a second ground-up audit — every route driven live via
+real DOM/ARIA-tree inspection, computed-contrast measurement, response
+headers from a real production server, and source reading — independent of
+the 30-fix audit above and finding a different 34 issues (some of these
+areas hadn't shifted since Phase 14; others were introduced or exposed by
+work done since). All 34 were fixed in the same session: full gate green
+(`typecheck`/`lint`/`test:run`/`build`, 224 tests), plus live verification
+against a rebuilt production server.
+
+**Six high-severity fixes**, briefly: every `Toggle` in the app was
+nameless to a screen reader (a `<label>` wrapping a `<button role="switch">`
+doesn't name the button the way it names an `<input>` — fixed with
+`aria-label` on the button itself, `ui/Toggle.tsx`). Every `Slider` folded
+its live value *and* full help paragraph into the same `<label>` that
+named the `<input>`, so the accessible name changed — and was re-announced
+in full — on every step; split into `aria-labelledby` (name only) +
+`aria-describedby` (description, read once) + a real `aria-valuetext`
+(`ui/Slider.tsx`). Global single-key shortcuts stayed live behind an open
+modal dialog and could navigate the page out from under it — reproduced
+live: pressing `4` with Presentation's gesture legend open jumped to 3D
+Studio with the legend still open behind it; fixed by checking for
+`[role="dialog"][aria-modal="true"]` in `useGlobalKeyboardCommands.ts`.
+The app's own design-token typefaces (Inter, JetBrains Mono) were never
+actually loaded anywhere — no `@font-face`, no files in `public/`, nothing
+— so the "futuristic, technical" typography only ever rendered on a
+machine that happened to already have Inter installed locally; fixed by
+self-hosting both via `@fontsource/inter`/`@fontsource/jetbrains-mono`
+(only the two weights actually used, 400/500). Settings advertised a voice
+command — `'start camera'` — that no command ever registered; fixed by
+adding a real `app/shell/useCameraCommands.ts` (start/stop camera, toggle
+Demo Mode, mounted once in `AppShell` like navigation commands). And the
+privacy panel's "never transmitted to any server" claim was scoped to the
+camera but read, in context, like a whole-app promise — voice control's
+Web Speech API is server-backed in Chrome/Edge; fixed by adding an
+explicit disclosure sentence rather than narrowing what already read as an
+absolute claim.
+
+**Other fixes worth knowing about, briefly**: `MethodBadge`'s full
+provenance sentence used to be embedded as `sr-only` text inside *every*
+badge instance — a page with eight readouts put "Arithmetic derived from
+model or heuristic values." in the DOM eight times. Fixed by mounting
+three fixed definitions once (`ui/MethodDefinitions.tsx`, rendered in
+`AppShell`) and pointing every badge's `aria-describedby` at the relevant
+one — same information, one copy per `Method` value app-wide, not one per
+badge. `StatusPill` carried its own `role="status"`, and renders twice on
+every module page (once in `StatusBar`, once as a Panel's own `action`) —
+so every camera transition was announced twice back-to-back; fixed by
+making `StatusPill` presentation-only and giving `StatusBar` a single
+`CAMERA_ANNOUNCEMENT` live region, the same pattern it already used for
+tracking-state announcements. 3D Studio's arrow-key object-nudge commands
+were registered unconditionally on mount, and `useGlobalKeyboardCommands`
+calls `preventDefault()` on any matched key regardless of what `run()`
+does — so arrow keys blocked the page's own scroll on `/studio` even with
+nothing selected (`withSelected`'s own no-op case); fixed by registering
+those four commands only while `interactionStore.selectedObjectId` is
+non-null (`useStudioKeyboardCommands.ts`), leaving scale/rotate keys
+(unaffected by scrolling) registered as before. `GameCanvas`'s
+keydown/keyup/Space-fire listeners were window-scoped with an
+`isEditableTarget` tag/role allowlist bolted on to avoid hijacking other
+controls — but capturing Space at `window` scope still consumed the
+browser's own Space-to-scroll everywhere nothing editable happened to be
+focused; fixed by scoping the listeners to the canvas itself
+(`tabIndex={0}` + element-level listeners), matching `DrawCanvas.tsx`'s
+already-established pattern, which also removed the need for the allowlist
+entirely. `CommandRouter.dispatchPhrase` matched the *first* registered
+phrase found in Map-iteration order rather than the *best* one, so
+phrasing overlaps were resolved by registration order rather than
+specificity; fixed by scoring all candidates and picking the longest
+matching phrase. `gameStore` initialized `lives: 0` while `status: 'idle'`
+— so Game Mode's very first paint read "Ready" next to "Lives 0," which
+looks like game-over on arrival; fixed by importing and using
+`LIVES_START` from `gameSimulation.ts` instead of a second hardcoded `0`.
+Vite's default 4KB asset-inlining threshold was silently inlining several
+of the self-hosted font subsets as `data:` URIs directly into the CSS —
+this app's CSP has no `font-src` directive (falls back to `default-src
+'self'`, which forbids `data:`), so those specific subsets failed to load
+with a real CSP violation in the console, caught only by actually auditing
+a production build's console output rather than trusting a clean
+`typecheck`/`build` (the same "build passing isn't the same claim as it
+working" lesson as bugs #14/#15/#16/#17 below); fixed with a
+`build.assetsInlineLimit` function in `vite.config.ts` that forces
+`.woff`/`.woff2`/`.ttf`/`.otf` to always emit as real hashed files.
+
+The remaining fixes were smaller and are only listed here for searchability:
+Presentation's slide changes announced nothing to screen readers (added a
+`LiveRegion`); its Notes/Legend toggle buttons carried no `aria-expanded`;
+the Home hero and Settings' About panel led with "N phases complete" —
+internal build-process language meaningless to a visitor with no repo —
+reworded to describe what the app does instead (`app/buildStatus.ts`);
+Settings referenced `IMPLEMENTATION.md` by name twice, and Analytics
+rendered `"IMPLEMENTATION.md §9"` as a literal, visible Panel eyebrow; the
+model-load-failed error message read as self-contradictory ("loads models
+locally" directly beside "does not work fully offline"); two
+`localStorage.setItem` calls (`appStore.updateSettings`,
+`gameStore.syncGameSummary`) were unguarded against Safari private
+browsing's throw-on-write; the Command Palette's `filtered` list was
+recomputed with a fresh array identity on every render, re-registering two
+effects' listeners on every keystroke rather than only on real change
+(now `useMemo`'d); its `aria-expanded` tracked "has results" instead of
+"is the popup open" (hard-coded `true` while open); its keyboard-shortcut
+`<kbd>` ran directly into the option's title with no separator in the
+computed accessible name ("Open Home1") — `aria-hidden` on the `<kbd>`,
+explicit `aria-label` on the option instead; Air Draw's Export/Save
+buttons stayed enabled with zero strokes (now gated on `strokeCount > 0`,
+matching Undo/Redo/Clear's own gate); `useModalDialog`'s initial focus was
+deferred to a `requestAnimationFrame` callback with no real layout reason,
+meaning focus depended on rAF actually firing — moved to run synchronously
+in the effect; the settings panel had no way to clear voice control's last
+heard transcript (added a `clearLastVoiceResult` action + button) or any
+of what the app persists locally (added a "Clear all local data" control —
+settings, high score, and the Air Draw gallery, the last needing a new
+`clearAllDrawings()` in `drawGallery.ts`); the mobile nav rail stayed
+pinned at a fixed 72px all the way down to phone widths, squeezing the
+camera preview to ~211×118px with no path to anything narrower — `Nav.tsx`
+now renders as a horizontally-scrollable bottom tab bar below `sm`
+(`order-2`/`sm:order-1` swapping it with the content column, which is
+`order-1`/`sm:order-2` in `AppShell.tsx`), and the header's bare `/`
+keyboard hint is hidden below `sm` since it's meaningless on a touch
+device; 3D Studio's R3F `<Canvas>` had no accessible treatment at all
+(unlike Air Draw's and Game Mode's canvases) — added `role="img"` +
+a dynamic `aria-label` naming the scene and current selection (lands on
+the wrapping `<div>` R3F's `<Canvas>` actually renders, not the `<canvas>`
+element itself — confirmed by reading `CanvasImpl`'s own source, since
+extra props spread onto that div, not the canvas); and letter-key
+shortcuts were matched case-sensitively against `event.key`, so Caps Lock
+silently broke every one of them (Air Draw's `z`/`y`/`c`, Presentation's
+`s`/`p`/`r`, Studio's `q`/`e`) — fixed by lowercasing both sides of the
+comparison for single-character keys in `useGlobalKeyboardCommands.ts`.
+
+**A verification note worth recording, not a code bug**: this session's
+console-error sweep of a production build first turned up what looked like
+a second CSP problem — "Applying inline style violates... style-src
+'self'" — on top of the font-inlining issue above. Chasing it (`grep` for
+`setAttribute('style'`/`.cssText` across the entire app source and every
+built bundle, all clean; a `securitypolicyviolation` listener attempt) led
+nowhere in app code, and a decisive check settled it: a completely fresh,
+un-interacted tab loaded the app with **zero** console errors of that
+kind, while the violation only ever appeared in a tab where "Start Camera"
+had been triggered through the sandboxed Browser pane, which shows its own
+"camera access blocked" notice overlay when that happens — most likely
+that overlay's own injected UI, not anything AIR OS ships. Recorded here
+rather than silently dropped, per this file's own quality bar on flagging
+what verification did and didn't establish — and as a reminder that a
+`grep` across all of `apps/web/src` plus every built `dist/assets/*.js`
+finding *zero* matches for a suspected code pattern is real, load-bearing
+evidence, not just "I looked and didn't see it."
+
 ## Where things stand now
 
 All 14 phases are complete and the full gate (`typecheck && lint &&

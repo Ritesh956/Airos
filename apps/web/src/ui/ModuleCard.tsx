@@ -7,6 +7,9 @@ export function ModuleCard({ module }: { module: ModuleDescriptor }) {
   return (
     <Link
       to={module.path}
+      aria-label={`${module.label}. ${module.tagline}. ${
+        module.status === 'ready' ? 'Ready.' : `Phase ${module.phase}.`
+      } Shortcut ${module.shortcut}.`}
       className={cn(
         'group glass-panel flex flex-col gap-4 rounded-2xl p-5 transition-all duration-200',
         'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-400',

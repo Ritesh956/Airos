@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { MODULE_REGISTRY } from '@/app/moduleRegistry';
 import { useStoreSelector } from '@/hooks/useStore';
-import { appStore, toggleCommandPalette, type VoiceState } from '@/state/appStore';
+import { appStore, toggleCommandPalette, type CameraState, type VoiceState } from '@/state/appStore';
 import { visionStore } from '@/state/visionStore';
 import { interactionStore, type TrackingState } from '@/state/interactionStore';
 import { DEGRADATION_STEPS } from '@/vision/perf/degradationLadder';
@@ -21,6 +21,18 @@ const TRACKING_ANNOUNCEMENT: Record<TrackingState, string> = {
   idle: '',
   tracking: 'Hand tracking active.',
   lost: 'Tracking lost — no hand detected.',
+};
+
+/** The single source of camera-state announcements, now that `StatusPill`
+ *  itself is a presentational chip only (see its own doc comment). 'off'
+ *  is left blank for the same reason `TRACKING_ANNOUNCEMENT.idle` is — the
+ *  resting state at page load isn't news. */
+const CAMERA_ANNOUNCEMENT: Record<CameraState, string> = {
+  off: '',
+  starting: 'Starting camera…',
+  active: 'Camera active.',
+  stopping: 'Stopping camera…',
+  error: 'Camera error.',
 };
 
 const VOICE_PILL_CONFIG: Record<VoiceState, { label: string; dot: string; pulse?: boolean }> = {
@@ -76,6 +88,7 @@ export function StatusBar() {
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-surface-1/80 px-5 backdrop-blur-xl">
       <LiveRegion message={TRACKING_ANNOUNCEMENT[trackingState]} />
+      <LiveRegion message={CAMERA_ANNOUNCEMENT[cameraState]} />
       <div>
         <div className="text-sm font-medium text-ink-0">{current?.label ?? 'AIR OS'}</div>
         {current?.tagline && <div className="text-[11px] text-ink-3">{current.tagline}</div>}
@@ -92,7 +105,15 @@ export function StatusBar() {
         >
           <CommandIcon className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Commands</span>
-          <kbd className="rounded border border-border bg-surface-3 px-1 font-mono text-[10px]">/</kbd>
+          {/* The "/" shortcut hint is a keyboard affordance — showing it
+              with no visible "Commands" label (as it did below `sm`, where
+              only this kbd chip and the icon remained) read as a stray
+              keyboard hint on a touch device with no keyboard. Hidden
+              below `sm`; the icon plus the button's own aria-label still
+              carry the control on touch (CLAUDE.md UI/UX audit finding #09). */}
+          <kbd className="hidden rounded border border-border bg-surface-3 px-1 font-mono text-[10px] sm:inline">
+            /
+          </kbd>
         </button>
       </div>
     </header>
